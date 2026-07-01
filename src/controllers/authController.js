@@ -2,7 +2,7 @@ const crypto = require('crypto');
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const sendEmail = require('../config/email');
-const generateTokenAndSetCookie = require('../utils/generateToken');
+const { sendTokenResponse } = require('../utils/generateToken');
 
 // for registration
 const register = async (req, res) => {
@@ -134,18 +134,8 @@ const login = async (req, res) => {
       });
     }
 
-    generateTokenAndSetCookie(user._id, res);
+    sendTokenResponse(user, 200, res);
 
-    res.json({
-      success: true,
-      message: 'Login successful',
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ 
@@ -243,9 +233,8 @@ const resetPassword = async (req, res) => {
     user.passwordResetExpires = undefined;
     await user.save();
 
-    generateTokenAndSetCookie(user._id, res);
-
-    res.json({ success: true, message: 'Password reset successful' });
+    sendTokenResponse(user, 200, res);
+    
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ 

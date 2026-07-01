@@ -20,6 +20,7 @@ app.use(cookieParser());
 
 
 app.use('/api/auth', require('./src/routes/authRoutes'));
+app.use('/api/admin', require('./src/routes/adminRoutes'));
 
 app.get('/', (req, res) => {
   res.json({ message: 'LIFEOS API is running' });
