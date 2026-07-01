@@ -3,6 +3,7 @@ const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const sendEmail = require('../config/email');
 const { sendTokenResponse } = require('../utils/generateToken');
+const generateOTP = require('../utils/generateOTP');
 
 // for registration
 const register = async (req, res) => {
@@ -134,13 +135,82 @@ const login = async (req, res) => {
       });
     }
 
-    sendTokenResponse(user, 200, res);
+    const { otp, otpExpires } = generateOTP();
+
+    user.loginOTP = otp;
+    user.loginOTPExpires = otpExpires;
+    await user.save({ validateBeforeSave: false });
+
+    await sendEmail({
+      to: user.email,
+      subject: 'LIFEOS Login OTP',
+      html: `
+        <h2>Login Verification Code</h2>
+        <p>Your OTP for login is —</p>
+        <h1 style="
+          font-size: 48px;
+          font-weight: bold;
+          color: #6366f1;
+          letter-spacing: 8px;
+          text-align: center;
+        ">${otp}</h1>
+        <p>This code expires in <strong>10 minutes</strong>.</p>
+        <p>If you didn't try to login, please ignore this email.</p>
+      `
+    });
+
+    res.json({
+      success: true,
+      message: 'OTP sent to your email. Please verify to complete login.',
+      email: user.email
+    });
+
 
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error during login' 
+    });
+  }
+};
+
+const verifyLoginOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({
+      email,
+      loginOTPExpires: { $gt: Date.now() } 
+    }).select('+loginOTP');
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP expired or invalid email'
+      });
+    }
+
+
+    if (user.loginOTP !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP'
+      });
+    }
+
+    user.loginOTP = undefined;
+    user.loginOTPExpires = undefined;
+    await user.save({ validateBeforeSave: false });
+
+  
+    sendTokenResponse(user, 200, res);
+
+  } catch (error) {
+    console.error('Verify login OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during OTP verification'
     });
   }
 };
@@ -168,44 +238,89 @@ const forgotPassword = async (req, res) => {
     if (!user) {
       return res.json({
         success: true,
-        message: 'If that email is registered, you will receive a reset link.'
+        message: 'If that email is registered, you will receive an OTP.'
       });
     }
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    user.passwordResetToken = resetToken;
-    user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+     const { otp, otpExpires } = generateOTP();
+
+    user.forgotOTP = otp;
+    user.forgotOTPExpires = otpExpires;
+    user.isForgotOTPVerified = false;
     await user.save({ validateBeforeSave: false });
 
-    const resetURL = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-    
     await sendEmail({
       to: user.email,
-      subject: 'LIFEOS password reset',
+      subject: 'LIFEOS Password Reset OTP',
       html: `
-        <h2>Password Reset Request</h2>
-        <p>Click the link below. This expires in 1 hour.</p>
-        <a href="${resetURL}" style="
-          display: inline-block;
-          padding: 12px 24px;
-          background: #6366f1;
-          color: white;
-          border-radius: 6px;
-          text-decoration: none;
-        ">Reset Password</a>
+        <h2>Password Reset Code</h2>
+        <p>Your OTP for password reset is —</p>
+        <h1 style="
+          font-size: 48px;
+          font-weight: bold;
+          color: #6366f1;
+          letter-spacing: 8px;
+          text-align: center;
+        ">${otp}</h1>
+        <p>This code expires in <strong>10 minutes</strong>.</p>
         <p>If you didn't request this, ignore this email.</p>
       `
     });
 
     res.json({
       success: true,
-      message: 'If that email is registered, you will receive a reset link.'
+      message: 'If that email is registered, you will receive an OTP.',
+      email: user.email
     });
+
   } catch (error) {
     console.error('Forgot password error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Error sending reset email' 
+    res.status(500).json({
+      success: false,
+      message: 'Error sending OTP'
+    });
+  }
+};
+
+const verifyForgotOTP = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    const user = await User.findOne({
+      email,
+      forgotOTPExpires: { $gt: Date.now() }
+    }).select('+forgotOTP');
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'OTP expired or invalid email'
+      });
+    }
+
+    if (user.forgotOTP !== otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid OTP'
+      });
+    }
+
+    user.forgotOTP = undefined;
+    user.forgotOTPExpires = undefined;
+    user.isForgotOTPVerified = true;
+    await user.save({ validateBeforeSave: false });
+
+    res.json({
+      success: true,
+      message: 'OTP verified. You can now reset your password.',
+      email: user.email
+    });
+
+  } catch (error) {
+    console.error('Verify forgot OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error during OTP verification'
     });
   }
 };
@@ -213,28 +328,26 @@ const forgotPassword = async (req, res) => {
 // resetPassword
 const resetPassword = async (req, res) => {
   try {
-    const { token } = req.params;
-    const { password } = req.body;
+    const { email, password } = req.body; 
 
     const user = await User.findOne({
-      passwordResetToken: token,
-      passwordResetExpires: { $gt: Date.now() }
+      email,
+      isForgotOTPVerified: true
     });
 
     if (!user) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Invalid or expired reset token' 
+        message: 'Please verify OTP first before resetting password' 
       });
     }
 
     user.password = password;
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
+     user.isForgotOTPVerified = false;
     await user.save();
 
     sendTokenResponse(user, 200, res);
-    
+
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ 
@@ -247,9 +360,11 @@ const resetPassword = async (req, res) => {
 module.exports = { 
   register, 
   verifyEmail, 
-  login, 
+  login,
+  verifyLoginOTP, 
   logout, 
   getMe, 
-  forgotPassword, 
+  forgotPassword,
+  verifyForgotOTP, 
   resetPassword 
 };
