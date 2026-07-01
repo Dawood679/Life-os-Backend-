@@ -8,7 +8,9 @@ const {
   logout,
   getMe,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  verifyLoginOTP,
+  verifyForgotOTP
 } = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
 
@@ -43,9 +45,11 @@ const loginValidation = [
 router.post('/register', registerValidation, register);
 router.get('/verify-email/:token', verifyEmail);
 router.post('/login', loginValidation, login);
+router.post('/verify-login-otp', verifyLoginOTP); 
 router.post('/logout', logout);
 router.post('/forgot-password', body('email').isEmail(), forgotPassword);
-router.post('/reset-password/:token', body('password').isLength({ min: 8 }), resetPassword);
+router.post('/verify-forgot-otp', verifyForgotOTP);
+router.post('/reset-password', resetPassword);
 
 // Protected routes
 router.get('/me', protect, getMe);
