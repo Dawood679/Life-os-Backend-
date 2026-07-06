@@ -1,29 +1,29 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
     name: {
       type: String,
-      required: [true, 'Name is required'],
-      trim: true
+      required: [true, "Name is required"],
+      trim: true,
     },
     email: {
       type: String,
-      required: [true, 'Email is required'],
+      required: [true, "Email is required"],
       unique: true,
       lowercase: true,
-      trim: true
+      trim: true,
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      required: [true, "Password is required"],
       minlength: 8,
-      select: false
+      select: false,
     },
     isEmailVerified: {
       type: Boolean,
-      default: false
+      default: false,
     },
     emailVerificationToken: String,
     emailVerificationExpires: Date,
@@ -32,34 +32,71 @@ const userSchema = new mongoose.Schema(
     passwordResetExpires: Date,
     loginOTP: {
       type: String,
-      select: false
+      select: false,
     },
     loginOTPExpires: Date,
 
     forgotOTP: {
       type: String,
-      select: false
+      select: false,
     },
     forgotOTPExpires: Date,
     isForgotOTPVerified: {
       type: Boolean,
-      default: false
+      default: false,
     },
+    phone: {
+      type: String,
+      trim: true,
+    },
+    bio: {
+      type: String,
+      maxlength: [500, "Bio cannot be more than 500 characters"],
+    },
+    avatar: {
+      type: String,
+      default: "",
+    },
+    dateOfBirth: {
+      type: Date,
+    },
+    gender: {
+      type: String,
+      enum: ["male", "female", "other", "prefer not to say"],
+    },
+
+    institution: { type: String, trim: true },
+    degree: { type: String, trim: true },
+    major: { type: String, trim: true },
+    studentId: { type: String, trim: true },
+    graduationYear: { type: Number },
+
+    jobTitle: { type: String, trim: true },
+    company: { type: String, trim: true },
+    experience: { type: Number },
+    skills: [{ type: String, trim: true }],
+
+    linkedin: { type: String, trim: true },
+    github: { type: String, trim: true },
+    twitter: { type: String, trim: true },
+    website: { type: String, trim: true },
+
+    country: { type: String, trim: true },
+    city: { type: String, trim: true },
 
     role: {
       type: String,
-      enum: ['user', 'admin'],
-      default: 'user'
-    }
+      enum: ["user", "admin"],
+      default: "user",
+    },
   },
   {
-    timestamps: true
-  }
+    timestamps: true,
+  },
 );
 
-
-userSchema.pre('save', async function () {
-  if (!this.isModified('password')) return;
+userSchema.pre("save", async function () {
+  if (!this.isModified("password")) return;
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
 });
@@ -68,4 +105,4 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model("User", userSchema);
