@@ -13,6 +13,7 @@ const {
   verifyForgotOTP,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
+const { authLimiter, otpLimiter } = require('../middleware/rateLimiter');
 
 // Validation rules
 const registerValidation = [
@@ -37,18 +38,18 @@ const loginValidation = [
 ];
 
 // Public routes
-router.post("/register", registerValidation, register);
+router.post("/register", registerValidation, authLimiter, register);
+router.post("/login", loginValidation,authLimiter, login);
 router.get("/verify-email/:token", verifyEmail);
-router.post("/login", loginValidation, login);
-router.post("/verify-login-otp", verifyLoginOTP);
+router.post("/verify-login-otp", otpLimiter, verifyLoginOTP);
 router.post("/logout", logout);
 router.post(
   "/forgot-password",
   body("email").isEmail().normalizeEmail(),
   forgotPassword,
 );
-router.post("/verify-forgot-otp", verifyForgotOTP);
-router.post("/reset-password", resetPassword);
+router.post("/verify-forgot-otp",otpLimiter, verifyForgotOTP);
+router.post("/reset-password",otpLimiter, resetPassword);
 
 // Protected routes
 router.get("/me", protect, getMe);
