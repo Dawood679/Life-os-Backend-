@@ -4,6 +4,7 @@ const cookieParser = require("cookie-parser");
 const dotenv = require("dotenv");
 const connectDB = require("./src/config/db");
 const startReminderJob = require("./src/utils/reminderJob");
+const { writeLimiter } = require('./src/middleware/rateLimiter');
 
 dotenv.config();
 connectDB();
@@ -20,6 +21,8 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+app.use('/api', writeLimiter);
 
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/admin", require("./src/routes/adminRoutes"));
