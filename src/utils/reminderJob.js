@@ -7,15 +7,11 @@ const startReminderJob = () => {
   cron.schedule("* * * * *", async () => {
     try {
       const now = new Date();
-      const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
-      const oneMinuteLater = new Date(now.getTime() + 60 * 1000);
-
       const todos = await Todo.find({
         reminderSent: false,
         isCompleted: false,
         dueDate: {
-          $gte: oneMinuteAgo,
-          $lte: oneMinuteLater,
+           $lte: now,
         },
       });
 

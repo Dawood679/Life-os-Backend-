@@ -96,18 +96,30 @@ const updateTodo = async (req, res) => {
     const { id } = req.params;
     const { title, description, priority, dueDate, isCompleted } = req.body;
 
+    const existing = await Todo.findOne({ _id: id, user: req.user._id });
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Todo not found' });
+    }
+
+    const updateFields = {};
+    if (title !== undefined) updateFields.title = title;
+    if (description !== undefined) updateFields.description = description;
+    if (priority !== undefined) updateFields.priority = priority;
+    if (dueDate !== undefined) updateFields.dueDate = dueDate;
+    if (isCompleted !== undefined) updateFields.isCompleted = isCompleted;
+
+   if (
+      dueDate &&
+      new Date(dueDate).getTime() !== new Date(existing.dueDate).getTime()
+    ) {
+      updateFields.reminderSent = false;
+    }
+
     const todo = await Todo.findOneAndUpdate(
       { _id: id, user: req.user._id },
-      { title, description, priority, dueDate, isCompleted },
+      updateFields,
       { new: true, runValidators: true }
     );
-
-    if (!todo) {
-      return res.status(404).json({
-        success: false,
-        message: 'Todo not found'
-      });
-    }
 
     res.json({
       success: true,
