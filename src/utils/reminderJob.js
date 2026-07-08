@@ -58,8 +58,9 @@ const startReminderJob = () => {
           `,
         });
 
-        todo.reminderSent = true;
-        await todo.save();
+        // todo.reminderSent = true;
+        // await todo.save();
+        await Todo.findByIdAndUpdate(todo._id, { reminderSent: true });
 
         console.log(`Reminder sent to ${user.email} for todo: ${todo.title}`);
       }
