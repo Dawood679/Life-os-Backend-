@@ -29,6 +29,8 @@ app.use("/api/admin", require("./src/routes/adminRoutes"));
 app.use("/api/profile", require("./src/routes/profileRoutes"));
 app.use("/api/to-dos", require("./src/routes/todoRoutes"));
 app.use('/api/roadmap', require('./src/routes/roadmapRoutes'));
+app.use('/api/study-plan', require('./src/routes/studyPlanRoutes'));
+
 
 app.get("/", (req, res) => {
   res.json({ message: "LIFEOS API is running" });
