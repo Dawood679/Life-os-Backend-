@@ -31,6 +31,7 @@ app.use("/api/to-dos", require("./src/routes/todoRoutes"));
 app.use('/api/roadmap', require('./src/routes/roadmapRoutes'));
 app.use('/api/study-plan', require('./src/routes/studyPlanRoutes'));
 app.use('/api/quiz', require('./src/routes/quizRoutes'));
+app.use('/api/chat', require('./src/routes/chatRoutes'));
 
 
 app.get("/", (req, res) => {
