@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const { Type } = require('@google/genai');
 
 const milestoneSchema = new mongoose.Schema({
   title: { type: String, required: true },
@@ -31,4 +32,42 @@ const roadmapSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+//gemini schemas for roadmap
+const roadmapResponseSchema = {
+  type: Type.OBJECT,
+  properties: {
+    roadmapTitle: { type: Type.STRING },
+    duration: { type: Type.STRING },
+    phases: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          phaseNumber: { type: Type.INTEGER },
+          phaseTitle: { type: Type.STRING },
+          milestones: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING },
+                description: { type: Type.STRING },
+                estimatedWeeks: { type: Type.INTEGER },
+                resources: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                }
+              },
+              required: ['title', 'description', 'estimatedWeeks', 'resources']
+            }
+          }
+        },
+        required: ['phaseNumber', 'phaseTitle', 'milestones']
+      }
+    }
+  },
+  required: ['roadmapTitle', 'duration', 'phases']
+};
+
 module.exports = mongoose.model('Roadmap', roadmapSchema);
+module.exports.roadmapResponseSchema = roadmapResponseSchema;
