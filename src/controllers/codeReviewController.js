@@ -1,0 +1,152 @@
+const CodeReview = require('../models/CodeReview');
+const { ai, codeReviewConfig } = require('../config/gemini');
+
+
+const reviewCode = async (req, res) => {
+  try {
+    const { code, language } = req.body;
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide code to review'
+      });
+    }
+
+    const prompt = `
+      Review the following ${language || 'javascript'} code:
+
+      \`\`\`${language || 'javascript'}
+      ${code}
+      \`\`\`
+
+      Analyze for:
+      1. Bugs — logical errors, runtime errors, wrong syntax
+      2. Performance Issues — slow operations, unnecessary loops, memory leaks
+      3. Security Issues — SQL injection, XSS, exposed credentials, unsafe inputs
+      4. Best Practices — naming conventions, code structure, DRY principle
+
+      Give overall score out of 100.
+      Provide improved version of the complete code.
+      Response must be in JSON format following the exact schema provided.
+    `;
+
+    const response = await ai.models.generateContent({
+      model: codeReviewConfig.model,
+      config: codeReviewConfig.config,
+      contents: prompt
+    });
+
+    const parsedReview = JSON.parse(response.text);
+
+    const codeReview = await CodeReview.create({
+      user: req.user._id,
+      code,
+      language: language || 'javascript',
+      overallScore: parsedReview.overallScore,
+      summary: parsedReview.summary,
+      bugs: parsedReview.bugs,
+      performanceIssues: parsedReview.performanceIssues,
+      securityIssues: parsedReview.securityIssues,
+      bestPractices: parsedReview.bestPractices,
+      improvedCode: parsedReview.improvedCode,
+      rawResponse: response.text
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Code reviewed successfully',
+      codeReview
+    });
+
+  } catch (error) {
+    console.error('Code review error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error reviewing code'
+    });
+  }
+};
+
+// get all reviews
+const getReviews = async (req, res) => {
+  try {
+    const reviews = await CodeReview.find({ user: req.user._id })
+      .select('-rawResponse -improvedCode -code')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: reviews.length,
+      reviews
+    });
+  } catch (error) {
+    console.error('Get reviews error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching reviews'
+    });
+  }
+};
+
+// get reviews by id
+const getReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const review = await CodeReview.findOne({
+      _id: id,
+      user: req.user._id
+    }).select('-rawResponse');
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      review
+    });
+  } catch (error) {
+    console.error('Get review error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching review'
+    });
+  }
+};
+
+// delete review
+const deleteReview = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const review = await CodeReview.findOneAndDelete({
+      _id: id,
+      user: req.user._id
+    });
+
+    if (!review) {
+      return res.status(404).json({
+        success: false,
+        message: 'Review not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Review deleted successfully'
+    });
+  } catch (error) {
+    console.error('Delete review error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error deleting review'
+    });
+  }
+};
+
+module.exports = { reviewCode, getReviews, getReview, deleteReview };

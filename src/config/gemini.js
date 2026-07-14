@@ -2,6 +2,7 @@ const { GoogleGenAI} = require('@google/genai');
 const { roadmapResponseSchema } = require('../models/Roadmap');
 const { studyPlanResponseSchema } = require('../models/StudyPlan');
 const { quizResponseSchema } = require('../models/Quiz');
+const { codeReviewResponseSchema } = require('../models/CodeReview');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -61,4 +62,48 @@ const chatConfig = {
   }
 };
 
-module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig};
+const codeReviewConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Code Reviewer — an expert software engineer and code quality analyst.
+
+    YOUR ONLY PURPOSE:
+    - Review and analyze code that users submit
+    - Identify bugs, performance issues, security vulnerabilities, and bad practices
+    - Provide improved version of the submitted code
+
+    STRICT RULES:
+    - You ONLY accept and review actual code
+    - If user sends plain text, questions, or anything that is NOT code, respond with:
+      "I can only review code. Please paste your code for review."
+    - If user asks general programming questions without code, respond with:
+      "I can only review code. Please paste your code for review."
+    - If user sends empty input or gibberish, respond with:
+      "I can only review code. Please paste your code for review."
+    - You MUST NOT answer questions, explain concepts, or chat
+    - You MUST NOT generate new code from scratch
+    - You ONLY review and improve code that is provided to you
+    - Response MUST be in valid JSON format only
+    - Follow this exact structure:
+    {
+      "overallScore": 75,
+      "summary": "Code has minor bugs and security issues",
+      "bugs": [
+        {
+          "line": "Line 5",
+          "issue": "Variable declared but never used",
+          "suggestion": "Remove unused variable or use it"
+        }
+      ],
+      "performanceIssues": [...],
+      "securityIssues": [...],
+      "bestPractices": [...],
+      "improvedCode": "// improved code here"
+    }`,
+    responseMimeType: 'application/json',
+    responseSchema: codeReviewResponseSchema,
+    temperature: 0.3
+  }
+};
+
+module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig, codeReviewConfig};
