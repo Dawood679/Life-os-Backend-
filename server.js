@@ -33,6 +33,7 @@ app.use('/api/study-plan', require('./src/routes/studyPlanRoutes'));
 app.use('/api/quiz', require('./src/routes/quizRoutes'));
 app.use('/api/chat', require('./src/routes/chatRoutes'));
 app.use('/api/code-review', require('./src/routes/codeReviewRoutes'));
+app.use('/api/project-generator', require('./src/routes/projectGeneratorRoutes'));
 
 
 app.get("/", (req, res) => {
