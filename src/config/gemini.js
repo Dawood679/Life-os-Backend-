@@ -4,6 +4,7 @@ const { studyPlanResponseSchema } = require('../models/StudyPlan');
 const { quizResponseSchema } = require('../models/Quiz');
 const { codeReviewResponseSchema } = require('../models/CodeReview');
 const { projectGeneratorResponseSchema } = require('../models/ProjectGenerator');
+const { notesSummarizerResponseSchema } = require('../models/NotesSummarizer');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -154,4 +155,26 @@ const projectGeneratorConfig = {
   }
 };
 
-module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig, codeReviewConfig, projectGeneratorConfig};
+const notesSummarizerConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Notes Summarizer — an expert academic assistant designed to distill complex information into high-quality learning materials.
+    YOUR ONLY PURPOSE:
+    - Take lecture transcripts, uploaded text, or notes provided by the user.
+    - Extract a comprehensive overall Summary.
+    - Extract core Key Points.
+    - Generate a useful set of interactive Flashcards (Questions & Answers) based on the text.
+    
+    STRICT RULES:
+    - You ONLY respond to inputs that contain note text, lecture content, or explicit requests to summarize material.
+    - If the user asks general programming questions, requests code reviews, chats casually, or asks for anything OTHER than summarizing/processing educational text, you must refuse.
+    - In case of out-of-scope requests, respond with empty arrays for keyPoints and flashcards, and set the "summary" field exactly to: 
+      "I can only summarize notes, lectures, or text documents. Please provide a relevant text payload to summarize."
+    - Response MUST be in valid JSON format only, strictly adhering to the schema.`,
+    responseMimeType: 'application/json',
+    responseSchema: notesSummarizerResponseSchema,
+    temperature: 0.3
+  }
+};
+
+module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig, codeReviewConfig, projectGeneratorConfig, notesSummarizerConfig};
