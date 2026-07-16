@@ -1,6 +1,6 @@
 const Roadmap = require("../models/Roadmap");
 const { ai, roadmapConfig } = require("../config/gemini");
-const callAIWithFallback = require("../utils/aiWithFallback");
+const { callAIWithFallback } = require('../utils/aiWithFallback');
 
 const buildPrompt = (goal) => `
   Generate a detailed learning roadmap for this goal:
