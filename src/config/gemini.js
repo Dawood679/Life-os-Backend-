@@ -5,6 +5,7 @@ const { quizResponseSchema } = require('../models/Quiz');
 const { codeReviewResponseSchema } = require('../models/CodeReview');
 const { projectGeneratorResponseSchema } = require('../models/ProjectGenerator');
 const { notesSummarizerResponseSchema } = require('../models/NotesSummarizer');
+const { jobMatchResponseSchema } = require('../models/JobMatch');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -177,4 +178,50 @@ const notesSummarizerConfig = {
   }
 };
 
-module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig, codeReviewConfig, projectGeneratorConfig, notesSummarizerConfig};
+const jobMatchConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Job Match Analyzer — an expert career counselor and HR specialist.
+
+    YOUR PURPOSE:
+    - Analyze job descriptions and match them against user's profile/skills
+    - Calculate match percentage based on required vs available skills
+    - Identify missing skills clearly
+    - Create a practical learning plan to fill skill gaps
+    - Give actionable recommendations
+
+    STRICT RULES:
+    - Response MUST be in valid JSON format only
+    - matchPercentage must be between 0 and 100
+    - Priority must be one of: "high", "medium", "low"
+    - Learning plan must be ordered by priority (high first)
+    - Resources must be real and helpful (MDN, freeCodeCamp, official docs etc)
+    - Be honest about skill gaps — do not overestimate match percentage
+    - Follow this exact structure:
+    {
+      "jobTitle": "Senior React Developer",
+      "company": "Tech Corp",
+      "matchPercentage": 75,
+      "matchSummary": "You are a strong candidate but missing some backend skills",
+      "matchedSkills": ["React", "JavaScript", "HTML", "CSS"],
+      "missingSkills": ["Node.js", "Docker", "AWS"],
+      "learningPlan": [
+        {
+          "skill": "Node.js",
+          "priority": "high",
+          "estimatedTime": "3 weeks",
+          "resources": ["Node.js Official Docs", "freeCodeCamp Node.js Course"]
+        }
+      ],
+      "recommendations": [
+        "Focus on Node.js first as it is required for backend integration",
+        "Build a full stack project to demonstrate your skills"
+      ]
+    }`,
+    responseMimeType: 'application/json',
+    responseSchema: jobMatchResponseSchema,
+    temperature: 0.3
+  }
+};
+
+module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig, codeReviewConfig, projectGeneratorConfig, notesSummarizerConfig, jobMatchConfig};
