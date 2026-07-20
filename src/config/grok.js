@@ -17,6 +17,7 @@ const callGrok = async (prompt, systemInstruction, history = []) => {
       model: 'grok-3-mini',
       messages,
       temperature: 0.4
+      
     },
     {
       headers: {

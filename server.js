@@ -35,6 +35,7 @@ app.use('/api/chat', require('./src/routes/chatRoutes'));
 app.use('/api/code-review', require('./src/routes/codeReviewRoutes'));
 app.use('/api/project-generator', require('./src/routes/projectGeneratorRoutes'));
 app.use('/api/notes-summarizer', require('./src/routes/notesSummarizerRoutes'));
+app.use('/api/job-match', require('./src/routes/jobMatchRoutes'));
 
 
 app.get("/", (req, res) => {
