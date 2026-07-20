@@ -1,6 +1,6 @@
 const NotesSummarizer = require('../models/NotesSummarizer');
 const { ai, notesSummarizerConfig } = require('../config/gemini');
-const callAIWithFallback = require('../utils/aiWithFallback');
+const { callAIWithFallback } = require('../utils/aiWithFallback');
 
 const generateSummary = async (req, res) => {
   try {
@@ -27,7 +27,7 @@ const generateSummary = async (req, res) => {
       Response must follow the exact JSON structure defined in the schema.
     `;
 
-    const response = await callAIWithFallback(ai, config, prompt);
+    const response = await callAIWithFallback(ai, notesSummarizerConfig, prompt);
 
     const parsed = JSON.parse(response.text);
 

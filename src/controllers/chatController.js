@@ -1,5 +1,6 @@
 const ChatHistory = require('../models/ChatHistory');
 const { ai, chatConfig } = require('../config/gemini');
+const { callChatWithFallback } = require('../utils/aiWithFallback');
 
 const sendMessage = async (req, res) => {
   try {
@@ -34,7 +35,6 @@ const sendMessage = async (req, res) => {
       });
     }
 
-    
     const history = chat.messages.map((msg) => [
       {
         role: 'user',
@@ -46,15 +46,14 @@ const sendMessage = async (req, res) => {
       }
     ]).flat();
 
-    const geminiChat = ai.chats.create({
-      model: chatConfig.model,
-      config: chatConfig.config,
-      history
-    });
-
-    const response = await geminiChat.sendMessage({
+    const response = await callChatWithFallback(
+      ai,
+      chatConfig,
+      history,
       message
-    });
+    );
+
+    console.log(`Chat by: ${response.provider} on attempt: ${response.attempt}`);
 
     const aiReply = response.text;
 
@@ -69,6 +68,7 @@ const sendMessage = async (req, res) => {
     res.json({
       success: true,
       chatId: chat._id,
+      provider: response.provider,
       message: {
         userMessage: message,
         userId: req.user._id,
@@ -77,6 +77,12 @@ const sendMessage = async (req, res) => {
     });
 
   } catch (error) {
+    if (error.message.includes('All 5 attempts failed')) {
+      return res.status(429).json({
+        success: false,
+        message: 'Service temporarily unavailable. Please try again later.'
+      });
+    }
     console.error('Send message error:', error);
     res.status(500).json({
       success: false,
