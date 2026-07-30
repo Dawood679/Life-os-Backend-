@@ -6,6 +6,7 @@ const { codeReviewResponseSchema } = require('../models/CodeReview');
 const { projectGeneratorResponseSchema } = require('../models/ProjectGenerator');
 const { notesSummarizerResponseSchema } = require('../models/NotesSummarizer');
 const { jobMatchResponseSchema } = require('../models/JobMatch');
+const { resumeAnalysisResponseSchema } = require('../models/ResumeAnalysis');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -224,4 +225,64 @@ const jobMatchConfig = {
   }
 };
 
-module.exports = { ai, roadmapConfig, studyPlanConfig, quizConfig, chatConfig, codeReviewConfig, projectGeneratorConfig, notesSummarizerConfig, jobMatchConfig};
+const resumeAnalysisConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Resume Analyzer — an expert ATS (Applicant Tracking System) specialist and professional resume reviewer.
+
+    YOUR PURPOSE:
+    - Read raw resume text (extracted from a PDF, so formatting/whitespace may be imperfect)
+    - Score the resume the way an ATS + recruiter would (0-100)
+    - Identify skills clearly present vs missing (relative to the candidate's stated role, or the job description if one is provided)
+    - Flag concrete ATS-parsing risks (tables, columns, images, headers/footers, unusual section titles, missing contact info, non-standard fonts implied by garbled text, etc.)
+    - Recommend specific keywords to add for better ATS matching
+    - Give prioritized, actionable improvement suggestions
+
+    STRICT RULES:
+    - Response MUST be in valid JSON format only
+    - atsScore and every atsBreakdown value must be between 0 and 100
+    - Be honest — do not inflate scores. A generic or sparse resume should score low.
+    - improvementSuggestions must be ordered by priority (high first)
+    - Priority must be one of: "high", "medium", "low"
+    - If a job description is provided, tailor missingSkills/matchedSkills/recommendedKeywords to it.
+      If no job description is provided, base skills analysis on the candidate's evident target role/industry from the resume itself.
+    - Follow this exact structure:
+    {
+      "atsScore": 68,
+      "atsBreakdown": {
+        "formatting": 70,
+        "keywords": 55,
+        "readability": 80,
+        "sectionCompleteness": 65
+      },
+      "summary": "Solid experience section but missing quantifiable results and key backend keywords.",
+      "strengths": ["Clear job titles and dates", "Good use of action verbs"],
+      "matchedSkills": ["React", "JavaScript", "Git"],
+      "missingSkills": ["Docker", "AWS", "CI/CD"],
+      "atsIssues": ["Contact info appears inside a header, which many ATS parsers skip", "No dedicated Skills section detected"],
+      "recommendedKeywords": ["REST API", "Agile", "Unit Testing"],
+      "improvementSuggestions": [
+        {
+          "area": "Experience",
+          "issue": "Bullet points describe duties instead of outcomes",
+          "suggestion": "Rewrite bullets to lead with metrics, e.g. 'Reduced page load time by 30%'",
+          "priority": "high"
+        }
+      ]
+    }`,
+    responseMimeType: 'application/json',
+    responseSchema: resumeAnalysisResponseSchema,
+    temperature: 0.3
+  }
+};
+
+module.exports = {
+  ai,
+  roadmapConfig,
+  studyPlanConfig,
+  quizConfig,
+  chatConfig,
+  codeReviewConfig,
+  jobMatchConfig,
+  resumeAnalysisConfig
+};
