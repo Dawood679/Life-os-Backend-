@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const { Type } = require('@google/genai');
 
+// 1. Subdocuments Schemas
 const folderItemSchema = new mongoose.Schema({
   path: { type: String },
   description: { type: String }
@@ -17,6 +18,7 @@ const dbModelSchema = new mongoose.Schema({
   fields: [dbFieldSchema]
 });
 
+// 2. Main Project Generator Schema
 const projectGeneratorSchema = new mongoose.Schema(
   {
     user: {
@@ -38,7 +40,7 @@ const projectGeneratorSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// for gemini
+// 3. Gemini Structured Output Schema
 const projectGeneratorResponseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -98,5 +100,11 @@ const projectGeneratorResponseSchema = {
   ]
 };
 
-module.exports = mongoose.model('ProjectGenerator', projectGeneratorSchema);
-module.exports.projectGeneratorResponseSchema = projectGeneratorResponseSchema;
+// 4. Create Model
+const ProjectGenerator = mongoose.model('ProjectGenerator', projectGeneratorSchema);
+
+// 5. Clean Combined Export
+module.exports = {
+  ProjectGenerator,
+  projectGeneratorResponseSchema
+};
