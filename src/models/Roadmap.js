@@ -20,7 +20,6 @@ const roadmapSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true,
-      unique: true
     },
     goal: { type: String, required: true },
     title: { type: String, required: true },
@@ -32,7 +31,13 @@ const roadmapSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-//gemini schemas for roadmap
+const Roadmap = mongoose.model('Roadmap', roadmapSchema);
+
+Roadmap.cleanIndexes().catch((err) => {
+  console.log('Index cleanup note:', err.message);
+});
+
+// Gemini schemas for roadmap
 const roadmapResponseSchema = {
   type: Type.OBJECT,
   properties: {
@@ -69,5 +74,5 @@ const roadmapResponseSchema = {
   required: ['roadmapTitle', 'duration', 'phases']
 };
 
-module.exports = mongoose.model('Roadmap', roadmapSchema);
+module.exports = Roadmap;
 module.exports.roadmapResponseSchema = roadmapResponseSchema;
