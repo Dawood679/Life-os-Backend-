@@ -1,4 +1,4 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
 const {
   logWater,
@@ -9,25 +9,28 @@ const {
   deleteEntry,
   updateReminderSettings,
   getNotifications,
-  markNotificationRead
-} = require('../controllers/wellnessController');
-const { protect } = require('../middleware/auth');
+  markNotificationRead,
+  getSettings,
+} = require("../controllers/wellnessController");
+const { protect } = require("../middleware/auth");
 
 // check in
-router.post('/water', protect, logWater);
-router.post('/screen-time', protect, logScreenTime);
-router.get('/today', protect, getCheckIn);          // ?date=YYYY-MM-DD optional
-router.get('/history', protect, getHistory);         // ?days=7 (default), max 90
-router.delete('/:type/:entryId', protect, deleteEntry); // :type = water | screen-time, ?date=YYYY-MM-DD
+router.post("/water", protect, logWater);
+router.post("/screen-time", protect, logScreenTime);
+router.get("/today", protect, getCheckIn); // ?date=YYYY-MM-DD optional
+router.get("/history", protect, getHistory); // ?days=7 (default), max 90
+router.delete("/:type/:entryId", protect, deleteEntry); // :type = water | screen-time, ?date=YYYY-MM-DD
 
 // goals
-router.put('/goals', protect, updateGoals);
+router.put("/goals", protect, updateGoals);
 
 // reminder
-router.put('/reminder', protect, updateReminderSettings);
+router.put("/reminder", protect, updateReminderSettings);
+router.put("/settings", protect, updateReminderSettings);
+router.get("/settings", protect, getSettings);
 
 // notification
-router.get('/notifications', protect, getNotifications);
-router.put('/notifications/:id/read', protect, markNotificationRead);
+router.get("/notifications", protect, getNotifications);
+router.put("/notifications/:id/read", protect, markNotificationRead);
 
 module.exports = router;
