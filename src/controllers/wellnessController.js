@@ -287,6 +287,16 @@ const markNotificationRead = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error updating notification' });
   }
 };
+// get settings
+const getSettings = async (req, res) => {
+  try {
+    const settings = await getOrCreateSettings(req.user._id);
+    res.json({ success: true, settings });
+  } catch (error) {
+    console.error('Get settings error:', error);
+    res.status(500).json({ success: false, message: 'Server error fetching settings' });
+  }
+};
 
 module.exports = {
   logWater,
@@ -297,5 +307,6 @@ module.exports = {
   deleteEntry,
   updateReminderSettings,
   getNotifications,
-  markNotificationRead
+  markNotificationRead,
+  getSettings
 };
