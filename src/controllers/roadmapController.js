@@ -11,7 +11,6 @@ const buildPrompt = (goal) => `
   Break it down into phases with clear milestones.
 `;
 
-// 1. জেনারেট নতুন রোডম্যাপ (সবসময় নতুন একটি Document তৈরি করবে)
 const generateRoadmap = async (req, res) => {
   try {
     const { goal } = req.body;
@@ -33,7 +32,6 @@ const generateRoadmap = async (req, res) => {
 
     const parsedRoadmap = JSON.parse(response.text);
 
-    // সবসময় নতুন একটি Document ক্রিয়েট হবে
     const roadmap = await Roadmap.create({
       user: req.user._id,
       goal,
@@ -63,17 +61,40 @@ const generateRoadmap = async (req, res) => {
   }
 };
 
-// 2. ইউজারের সব রোডম্যাপের তালিকা ফেরত পাঠানো (find)
 const getRoadmaps = async (req, res) => {
   try {
-    // findOne এর বদলে find() ব্যবহার করা হয়েছে যাতে সব রোডম্যাপের array পাওয়া যায়
-    const roadmaps = await Roadmap.find({ user: req.user._id }).sort({
-      createdAt: -1,
-    });
+    // Parse query params with fallback defaults
+    let page = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+
+    // Sanitize input: ensure page >= 1 and limit is positive
+    page = !isNaN(page) && page > 0 ? page : 1;
+    limit = !isNaN(limit) && limit > 0 ? limit : 10;
+
+    const skip = (page - 1) * limit;
+
+    // Execute query and total count concurrently
+    const [totalRoadmaps, roadmaps] = await Promise.all([
+      Roadmap.countDocuments({ user: req.user._id }),
+      Roadmap.find({ user: req.user._id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+    ]);
+
+    const totalPages = Math.ceil(totalRoadmaps / limit) || 1;
 
     res.json({
       success: true,
-      roadmaps, // Array of roadmaps
+      roadmaps,
+      pagination: {
+        totalRoadmaps,
+        totalPages,
+        currentPage: page,
+        limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
     });
   } catch (error) {
     console.error("Get roadmaps error:", error);
@@ -84,7 +105,6 @@ const getRoadmaps = async (req, res) => {
   }
 };
 
-// 3. নির্দিষ্ট একটি রোডম্যাপ ডিলিট করার রুট
 const deleteRoadmap = async (req, res) => {
   try {
     const { id } = req.params;

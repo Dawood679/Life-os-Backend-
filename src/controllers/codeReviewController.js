@@ -73,16 +73,35 @@ const reviewCode = async (req, res) => {
   }
 };
 
-// get all reviews
+// get all reviews with pagination
 const getReviews = async (req, res) => {
   try {
-    const reviews = await CodeReview.find({ user: req.user._id })
-      .select("-rawResponse -improvedCode -code")
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
+    const skip = (page - 1) * limit;
+
+    const [reviews, total] = await Promise.all([
+      CodeReview.find({ user: req.user._id })
+        .select("-rawResponse -improvedCode -code")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      CodeReview.countDocuments({ user: req.user._id }),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
       count: reviews.length,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
       reviews,
     });
   } catch (error) {
