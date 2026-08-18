@@ -14,3 +14,4 @@ router.get('/:id', protect, getStudyPlan);
 router.delete('/:id', protect, deleteStudyPlan);
 
 module.exports = router;
+

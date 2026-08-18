@@ -3,11 +3,11 @@ const { ai, resumeAnalysisConfig } = require('../config/gemini');
 const { callAIWithFallback } = require('../utils/aiWithFallback');
 const { extractTextFromPDF } = require('../utils/pdfParser');
 
-// ─── ANALYZE RESUME ───────────────────────────────────────────────────────────
+// ANALYZE RESUME 
 const analyzeResume = async (req, res) => {
   try {
     const resumeFile = req.files.resume; // validated by validateResumeFile middleware
-    const { jobDescription } = req.body; // optional — tailors the analysis to a specific job
+    const { jobDescription } = req.body;
 
     // 1. Extract text from the uploaded PDF (in-memory buffer, no disk I/O)
     let extracted;
@@ -85,16 +85,39 @@ const analyzeResume = async (req, res) => {
   }
 };
 
-// ─── GET ALL RESUME ANALYSES ──────────────────────────────────────────────────
+// GET ALL RESUME ANALYSES
 const getResumeAnalyses = async (req, res) => {
   try {
-    const analyses = await ResumeAnalysis.find({ user: req.user._id })
-      .select('-rawResponse -resumeText -improvementSuggestions')
-      .sort({ createdAt: -1 });
+    // Parse query params with safe defaults
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 10)); // Max limit: 50
+    const skip = (page - 1) * limit;
+
+    const query = { user: req.user._id };
+
+    // Execute query and count in parallel for performance
+    const [analyses, total] = await Promise.all([
+      ResumeAnalysis.find(query)
+        .select('-rawResponse -resumeText -improvementSuggestions')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      ResumeAnalysis.countDocuments(query)
+    ]);
+
+    const totalPages = Math.ceil(total / limit) || 1;
 
     res.json({
       success: true,
       count: analyses.length,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      },
       analyses
     });
   } catch (error) {
@@ -106,7 +129,7 @@ const getResumeAnalyses = async (req, res) => {
   }
 };
 
-// ─── GET SINGLE RESUME ANALYSIS ───────────────────────────────────────────────
+//GET SINGLE RESUME ANALYSIS
 const getResumeAnalysis = async (req, res) => {
   try {
     const { id } = req.params;
@@ -133,7 +156,7 @@ const getResumeAnalysis = async (req, res) => {
   }
 };
 
-// ─── DELETE RESUME ANALYSIS ───────────────────────────────────────────────────
+// DELETE RESUME ANALYSIS
 const deleteResumeAnalysis = async (req, res) => {
   try {
     const { id } = req.params;

@@ -4,32 +4,37 @@ const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-async function callGroq(prompt, systemInstruction = '', messagesHistory = []) {
+async function callGroq(prompt, systemInstruction = '', messagesHistory = [], forceJson = true) {
   try {
     const messages = [];
 
-    // System instruction প্রসেসিং
     let finalSystemInstruction = systemInstruction ? systemInstruction.trim() : '';
 
-    // Groq-এর বাধ্যবাধকতা: response_format: 'json_object' থাকলে 'json' শব্দটি থাকতেই হবে
-    if (!finalSystemInstruction.toLowerCase().includes('json')) {
-      finalSystemInstruction += ' Respond in JSON format.';
+    if (forceJson && !finalSystemInstruction.toLowerCase().includes('json')) {
+      finalSystemInstruction += ' Respond in valid JSON format.';
     }
 
-    messages.push({ role: 'system', content: finalSystemInstruction.trim() });
+    if (finalSystemInstruction) {
+      messages.push({ role: 'system', content: finalSystemInstruction });
+    }
 
-    // History অথবা User Prompt যোগ করা
+    // Append history if present, otherwise single user prompt
     if (messagesHistory && messagesHistory.length > 0) {
       messages.push(...messagesHistory);
     } else {
       messages.push({ role: 'user', content: prompt });
     }
 
-    const chatCompletion = await groq.chat.completions.create({
+    const payload = {
       messages: messages,
-      model: 'llama-3.3-70b-versatile',
-      response_format: { type: 'json_object' },
-    });
+      model: 'llama-3.3-70b-specdec', // Updated to valid model
+    };
+
+    if (forceJson) {
+      payload.response_format = { type: 'json_object' };
+    }
+
+    const chatCompletion = await groq.chat.completions.create(payload);
 
     return chatCompletion.choices[0]?.message?.content || '';
   } catch (error) {
