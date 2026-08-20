@@ -89,6 +89,21 @@ const userSchema = new mongoose.Schema(
       enum: ["user", "admin"],
       default: "user",
     },
+
+    timezone: {
+      type: String,
+      default: 'UTC',
+      required: true
+    },
+    
+    waterSettings: {
+      isActive: { type: Boolean, default: false },
+      targetMl: { type: Number, default: 2000 },
+      wakeTime: { type: String, default: '08:00' }, // 'HH:MM'
+      sleepTime: { type: String, default: '22:00' }, // 'HH:MM'
+      intervalHours: { type: Number, default: 2 },
+      isEmailAlertEnabled: { type: Boolean, default: false }
+    }
   },
   {
     timestamps: true,

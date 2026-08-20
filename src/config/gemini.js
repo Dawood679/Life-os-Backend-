@@ -7,6 +7,7 @@ const { projectGeneratorResponseSchema } = require("../models/ProjectGenerator")
 const { notesSummarizerResponseSchema } = require('../models/NotesSummarizer');
 const { jobMatchResponseSchema } = require('../models/JobMatch');
 const { resumeAnalysisResponseSchema } = require('../models/ResumeAnalysis');
+const { weeklyReportResponseSchema } = require('../models/WellnessLog');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -276,6 +277,27 @@ const resumeAnalysisConfig = {
   }
 };
 
+const weeklyReportConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Health & Productivity Strategist — an empathetic, strictly data-driven life analyst.
+
+    YOUR PURPOSE:
+    - Correlate weekly physical wellness metrics (sleep, water, screen time, energy score) with task completion rates (Todos).
+    - Provide a concise narrative analysis without inventing any numbers.
+
+    STRICT RULES:
+    - Base analysis ONLY on the numbers provided in the user prompt.
+    - Do NOT hallucinate or assume metrics that are not passed in.
+    - If task completion is low and screen time is high or sleep is low, highlight the friction.
+    - Provide exactly one actionable, concrete tip.
+    - Response MUST be in valid JSON format strictly matching the provided schema.`,
+    responseMimeType: 'application/json',
+    responseSchema: weeklyReportResponseSchema,
+    temperature: 0.3
+  }
+};
+
 module.exports = {
   ai,
   roadmapConfig,
@@ -284,5 +306,6 @@ module.exports = {
   chatConfig,
   codeReviewConfig,
   jobMatchConfig,
-  resumeAnalysisConfig
+  resumeAnalysisConfig,
+  weeklyReportConfig
 };

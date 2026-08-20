@@ -5,12 +5,14 @@ const dotenv = require("dotenv");
 const connectDB = require("./src/config/db");
 const startReminderJob = require("./src/utils/reminderJob");
 const { writeLimiter } = require('./src/middleware/rateLimiter');
+const initWaterReminderCron = require("./src/utils/waterReminderCron");
 
 dotenv.config();
 connectDB();
 
 const app = express();
 startReminderJob();
+initWaterReminderCron();
 
 app.use(
   cors({

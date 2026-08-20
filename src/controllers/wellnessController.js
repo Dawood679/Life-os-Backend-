@@ -1,312 +1,435 @@
-const WellnessCheckIn = require('../models/WellnessCheckIn');
-const WellnessSettings = require('../models/WellnessSettings');
-const Notification = require('../models/Notification');
+const WellnessLog = require('../models/WellnessLog');
+const User = require('../models/User');
+const Todo = require('../models/Todo'); 
+const { isValidDateString } = require('../utils/dateHelper');
+const { calculateEnergyScore } = require('../utils/energyScoreEngine');
+
+const { ai, weeklyReportConfig } = require('../config/gemini');
+const { callAIWithFallback } = require('../utils/aiWithFallback');
 
 
-const todayString = () => new Date().toISOString().split('T')[0];
-
-const getOrCreateSettings = async (userId) => {
-  let settings = await WellnessSettings.findOne({ user: userId });
-  if (!settings) {
-    settings = await WellnessSettings.create({ user: userId });
+const updateEnergyScore = async (userId, date) => {
+  const log = await WellnessLog.findOne({ user: userId, date });
+  if (log) {
+    const newScore = calculateEnergyScore(log);
+    log.energyScore = newScore;
+    await log.save();
+    return log;
   }
-  return settings;
+  return null;
 };
 
-const getOrCreateCheckIn = async (userId, date) => {
-  let checkIn = await WellnessCheckIn.findOne({ user: userId, date });
-  if (!checkIn) {
-    const settings = await getOrCreateSettings(userId);
-    checkIn = await WellnessCheckIn.create({
-      user: userId,
-      date,
-      water: { goalMl: settings.waterGoalMl },
-      screenTime: { goalMinutes: settings.screenTimeGoalMinutes }
-    });
-  }
-  return checkIn;
-};
+const evaluateBurnoutRisk = async (userId) => {
+  const today = new Date();
+  const past3Days = new Date(today);
+  past3Days.setDate(past3Days.getDate() - 3);
 
-const withMeta = (checkIn) => {
-  const obj = checkIn.toObject();
-  return {
-    ...obj,
-    water: {
-      ...obj.water,
-      goalMet: obj.water.totalMl >= obj.water.goalMl,
-      percent: Math.min(100, Math.round((obj.water.totalMl / obj.water.goalMl) * 100))
-    },
-    screenTime: {
-      ...obj.screenTime,
-      overGoal: obj.screenTime.totalMinutes > obj.screenTime.goalMinutes,
-      percent: Math.min(100, Math.round((obj.screenTime.totalMinutes / obj.screenTime.goalMinutes) * 100))
-    }
+  const formatDate = (dateObj) => {
+    const tzOffset = dateObj.getTimezoneOffset() * 60000;
+    return new Date(dateObj.getTime() - tzOffset).toISOString().split('T')[0];
   };
+
+  const logs = await WellnessLog.find({
+    user: userId,
+    date: { $gte: formatDate(past3Days) }
+  }).sort({ date: -1 });
+
+  if (logs.length < 3) return { isBurnout: false, reason: 'Insufficient data' };
+
+  // Rule 1: 3 consecutive days with energy score < 50
+  const consecutiveLowScores = logs.every(log => (log.energyScore || 50) < 50);
+
+  // Rule 2: Low sleep (< 6 hrs) + High screen time (> 300 mins) on recent days
+  const badHabitPattern = logs.some(log => 
+    (log.sleep?.hours && log.sleep.hours < 6) && 
+    (log.screenTime?.usedMinutes && log.screenTime.usedMinutes > 300)
+  );
+
+  if (consecutiveLowScores) {
+    return {
+      isBurnout: true,
+      reason: 'Your Energy Score has been consistently below 50 for the past 3 days.'
+    };
+  }
+
+  if (badHabitPattern) {
+    return {
+      isBurnout: true,
+      reason: 'Detected a pattern of low sleep combined with high screen time.'
+    };
+  }
+
+  return { isBurnout: false };
 };
 
-// log water intake
-const logWater = async (req, res) => {
+// GET /api/wellness/weekly-report
+const generateWeeklyReport = async (req, res) => {
   try {
-    const { amountMl, date } = req.body;
+    const today = new Date();
+    const pastWeek = new Date(today);
+    pastWeek.setDate(pastWeek.getDate() - 6);
 
-    if (!amountMl || amountMl <= 0) {
+    const formatDate = (dateObj) => {
+      const tzOffset = dateObj.getTimezoneOffset() * 60000;
+      return new Date(dateObj.getTime() - tzOffset).toISOString().split('T')[0];
+    };
+
+    const fromDate = formatDate(pastWeek);
+    const toDate = formatDate(today);
+
+    // 1. Fetch Real Wellness Logs for the 7-day window
+    const wellnessLogs = await WellnessLog.find({
+      user: req.user._id,
+      date: { $gte: fromDate, $lte: toDate }
+    });
+
+    if (!wellnessLogs || wellnessLogs.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide a valid amountMl (e.g. 250 for a glass of water)'
+        message: 'No wellness logs found for the past 7 days. Please log your data first.'
       });
     }
 
-    const targetDate = date || todayString();
-    const checkIn = await getOrCreateCheckIn(req.user._id, targetDate);
-
-    checkIn.water.entries.push({ amountMl });
-    checkIn.water.totalMl += amountMl;
-    await checkIn.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Water intake logged',
-      checkIn: withMeta(checkIn)
+    // 2. Fetch Real Productivity (Todo) Data
+    const todos = await Todo.find({
+      user: req.user._id,
+      createdAt: { $gte: pastWeek, $lte: today }
     });
-  } catch (error) {
-    console.error('Log water error:', error);
-    res.status(500).json({ success: false, message: 'Server error logging water intake' });
-  }
-};
 
-// log screen time
-const logScreenTime = async (req, res) => {
-  try {
-    const { minutes, category, date } = req.body;
+    // 3. Aggregate Statistical Metrics
+    let totalEnergy = 0;
+    let totalScreenTime = 0;
+    let totalSleep = 0;
+    let totalWater = 0;
 
-    if (!minutes || minutes <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide valid minutes (e.g. 30)'
-      });
-    }
-
-    const targetDate = date || todayString();
-    const checkIn = await getOrCreateCheckIn(req.user._id, targetDate);
-
-    checkIn.screenTime.entries.push({ minutes, category: category || 'general' });
-    checkIn.screenTime.totalMinutes += minutes;
-    await checkIn.save();
-
-    res.status(201).json({
-      success: true,
-      message: 'Screen time logged',
-      checkIn: withMeta(checkIn)
+    wellnessLogs.forEach((log) => {
+      totalEnergy += log.energyScore || 0;
+      totalScreenTime += log.screenTime?.usedMinutes || 0;
+      totalSleep += log.sleep?.hours || 0;
+      totalWater += log.water?.consumedMl || 0;
     });
-  } catch (error) {
-    console.error('Log screen time error:', error);
-    res.status(500).json({ success: false, message: 'Server error logging screen time' });
-  }
-};
 
-// get today
-const getCheckIn = async (req, res) => {
-  try {
-    const targetDate = req.query.date || todayString();
+    const daysLogged = wellnessLogs.length;
+    const avgEnergy = Math.round(totalEnergy / daysLogged);
+    const avgScreenTime = Math.round(totalScreenTime / daysLogged);
+    const avgSleep = (totalSleep / daysLogged).toFixed(1);
+    const avgWater = Math.round(totalWater / daysLogged);
 
-    let checkIn = await WellnessCheckIn.findOne({ user: req.user._id, date: targetDate });
+    const totalTasks = todos.length;
+    const completedTasks = todos.filter((t) => t.status === 'completed' || t.isCompleted).length;
+    const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-    if (!checkIn) {
-      // Don't persist a doc just for a read — return live defaults from settings
-      const settings = await getOrCreateSettings(req.user._id);
-      return res.json({
-        success: true,
-        checkIn: {
-          user: req.user._id,
-          date: targetDate,
-          water: { goalMl: settings.waterGoalMl, totalMl: 0, entries: [], goalMet: false, percent: 0 },
-          screenTime: { goalMinutes: settings.screenTimeGoalMinutes, totalMinutes: 0, entries: [], overGoal: false, percent: 0 }
+    // 4. Construct Prompt with Explicit Real Numbers
+    const prompt = `
+      Analyze the following 7-day health and productivity summary for the user:
+
+      - Days Logged: ${daysLogged} / 7 days
+      - Average Energy Score: ${avgEnergy} / 100
+      - Average Sleep: ${avgSleep} hours/night
+      - Average Daily Screen Time: ${avgScreenTime} minutes
+      - Average Water Intake: ${avgWater} ml/day
+      - Tasks Completed: ${completedTasks} / ${totalTasks} (${completionRate}% completion rate)
+
+      Correlate how sleep, screen time, and hydration impacted the user's task completion efficiency.
+      Evaluate burnout risk and return the analysis strictly adhering to the JSON schema.
+    `;
+
+    // 5. Run with Gemini -> Groq Fallback Engine
+    const response = await callAIWithFallback(ai, weeklyReportConfig, prompt);
+    console.log(`[WEEKLY REPORT] Generated by: ${response.provider} on attempt: ${response.attempt}`);
+
+    const parsedReport = JSON.parse(response.text);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Weekly AI report generated successfully',
+      data: {
+        ...parsedReport,
+        stats: {
+          daysLogged,
+          avgEnergy,
+          avgSleep,
+          avgScreenTime,
+          avgWater,
+          completedTasks,
+          totalTasks,
+          completionRate
         }
+      }
+    });
+
+  } catch (error) {
+    if (error.message.includes('All 5 attempts failed')) {
+      return res.status(429).json({
+        success: false,
+        message: 'AI engine is currently busy. Please try again in a few moments.'
       });
     }
-
-    res.json({ success: true, checkIn: withMeta(checkIn) });
-  } catch (error) {
-    console.error('Get check-in error:', error);
-    res.status(500).json({ success: false, message: 'Server error fetching check-in' });
+    console.error('Weekly Report Generation Error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error generating weekly report',
+      error: error.message
+    });
   }
 };
 
-// get history
-const getHistory = async (req, res) => {
+// POST /api/wellness/water-settings
+const updateWaterSettings = async (req, res) => {
   try {
-    const days = Math.min(parseInt(req.query.days) || 7, 90);
+    const { timezone, isActive, targetMl, wakeTime, sleepTime, intervalHours, isEmailAlertEnabled } = req.body;
 
-    const checkIns = await WellnessCheckIn.find({ user: req.user._id })
-      .sort({ date: -1 })
-      .limit(days);
+    const updateFields = {};
+    if (timezone) updateFields.timezone = timezone;
+    
+    if (isActive !== undefined || targetMl !== undefined || wakeTime || sleepTime || intervalHours || isEmailAlertEnabled !== undefined) {
+      updateFields.waterSettings = {};
+      
+      const user = await User.findById(req.user._id);
+      const currentSettings = user.waterSettings || {};
 
-    const history = checkIns.reverse().map((c) => withMeta(c));
-
-    res.json({ success: true, count: history.length, history });
-  } catch (error) {
-    console.error('Get history error:', error);
-    res.status(500).json({ success: false, message: 'Server error fetching history' });
-  }
-};
-
-// update goals
-const updateGoals = async (req, res) => {
-  try {
-    const { waterGoalMl, screenTimeGoalMinutes } = req.body;
-
-    const settings = await getOrCreateSettings(req.user._id);
-
-    if (waterGoalMl !== undefined) {
-      if (waterGoalMl <= 0) {
-        return res.status(400).json({ success: false, message: 'waterGoalMl must be greater than 0' });
-      }
-      settings.waterGoalMl = waterGoalMl;
+      updateFields.waterSettings.isActive = isActive !== undefined ? isActive : currentSettings.isActive;
+      updateFields.waterSettings.targetMl = targetMl !== undefined ? targetMl : currentSettings.targetMl;
+      updateFields.waterSettings.wakeTime = wakeTime || currentSettings.wakeTime;
+      updateFields.waterSettings.sleepTime = sleepTime || currentSettings.sleepTime;
+      updateFields.waterSettings.intervalHours = intervalHours || currentSettings.intervalHours;
+      updateFields.waterSettings.isEmailAlertEnabled = isEmailAlertEnabled !== undefined ? isEmailAlertEnabled : currentSettings.isEmailAlertEnabled;
     }
 
-    if (screenTimeGoalMinutes !== undefined) {
-      if (screenTimeGoalMinutes <= 0) {
-        return res.status(400).json({ success: false, message: 'screenTimeGoalMinutes must be greater than 0' });
-      }
-      settings.screenTimeGoalMinutes = screenTimeGoalMinutes;
-    }
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).select('-password');
 
-    await settings.save();
-
-    res.json({ success: true, message: 'Goals updated', settings });
+    return res.status(200).json({
+      success: true,
+      message: 'Settings updated successfully',
+      data: updatedUser
+    });
   } catch (error) {
-    console.error('Update goals error:', error);
-    res.status(500).json({ success: false, message: 'Server error updating goals' });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update settings',
+      error: error.message
+    });
   }
 };
 
-// delete single entry
-const deleteEntry = async (req, res) => {
+// GET /api/wellness/logs/:date
+const getLogByDate = async (req, res) => {
   try {
-    const { type, entryId } = req.params; // type: "water" | "screen-time"
-    const date = req.query.date || todayString();
+    const { date } = req.params;
 
-    if (!['water', 'screen-time'].includes(type)) {
-      return res.status(400).json({ success: false, message: 'type must be "water" or "screen-time"' });
+    if (!isValidDateString(date)) {
+      return res.status(400).json({ success: false, message: 'Invalid date format' });
     }
 
-    const checkIn = await WellnessCheckIn.findOne({ user: req.user._id, date });
-    if (!checkIn) {
-      return res.status(404).json({ success: false, message: 'Check-in not found for this date' });
-    }
+    const log = await WellnessLog.findOne({ user: req.user._id, date });
 
-    if (type === 'water') {
-      const entry = checkIn.water.entries.id(entryId);
-      if (!entry) return res.status(404).json({ success: false, message: 'Entry not found' });
-      checkIn.water.totalMl -= entry.amountMl;
-      entry.deleteOne();
-    } else {
-      const entry = checkIn.screenTime.entries.id(entryId);
-      if (!entry) return res.status(404).json({ success: false, message: 'Entry not found' });
-      checkIn.screenTime.totalMinutes -= entry.minutes;
-      entry.deleteOne();
-    }
-
-    await checkIn.save();
-    res.json({ success: true, message: 'Entry removed', checkIn: withMeta(checkIn) });
+    return res.status(200).json({
+      success: true,
+      message: log ? 'Log found' : 'No log for this date yet',
+      data: log || null
+    });
   } catch (error) {
-    console.error('Delete entry error:', error);
-    res.status(500).json({ success: false, message: 'Server error deleting entry' });
+    return res.status(500).json({ success: false, message: 'Failed to fetch wellness log', error: error.message });
   }
 };
 
-// update reminder
-const updateReminderSettings = async (req, res) => {
+// GET /api/wellness/logs?from=YYYY-MM-DD&to=YYYY-MM-DD
+const getLogsInRange = async (req, res) => {
   try {
-    const {
-      enabled,
-      mode,            // "manual" | "auto"
-      intervalMinutes, // required if mode === "manual"
-      activeStart,      // "HH:mm"
-      activeEnd,
-      emailEnabled,
-      inAppEnabled
-    } = req.body;
+    const { from, to } = req.query;
 
-    const settings = await getOrCreateSettings(req.user._id);
+    if (!isValidDateString(from) || !isValidDateString(to)) {
+      return res.status(400).json({ success: false, message: 'Invalid from/to date' });
+    }
 
-    if (enabled !== undefined) settings.reminder.enabled = enabled;
-    if (mode) settings.reminder.mode = mode;
-    if (intervalMinutes) settings.reminder.intervalMinutes = intervalMinutes;
-    if (activeStart) settings.reminder.activeStart = activeStart;
-    if (activeEnd) settings.reminder.activeEnd = activeEnd;
-    if (emailEnabled !== undefined) settings.reminder.emailEnabled = emailEnabled;
-    if (inAppEnabled !== undefined) settings.reminder.inAppEnabled = inAppEnabled;
+    const logs = await WellnessLog.find({
+      user: req.user._id,
+      date: { $gte: from, $lte: to }
+    }).sort({ date: 1 });
 
-    // Reset schedule so the next reminder recalculates from now
-    settings.reminder.nextReminderAt = null;
-
-    await settings.save();
-
-    res.json({ success: true, message: 'Reminder settings updated', settings });
+    return res.status(200).json({ success: true, message: `${logs.length} log(s) found`, data: logs });
   } catch (error) {
-    console.error('Update reminder settings error:', error);
-    res.status(500).json({ success: false, message: 'Server error updating reminder settings' });
+    return res.status(500).json({ success: false, message: 'Failed to fetch logs', error: error.message });
   }
 };
 
-// notifications
-const getNotifications = async (req, res) => {
+// POST /api/wellness/water
+const addWaterEntry = async (req, res) => {
   try {
-    const notifications = await Notification.find({ user: req.user._id })
-      .sort({ createdAt: -1 })
-      .limit(30);
+    const { date, amountMl } = req.body;
 
-    const unreadCount = await Notification.countDocuments({ user: req.user._id, read: false });
+    if (!isValidDateString(date)) {
+      return res.status(400).json({ success: false, message: 'Invalid date format' });
+    }
 
-    res.json({ success: true, unreadCount, notifications });
-  } catch (error) {
-    console.error('Get notifications error:', error);
-    res.status(500).json({ success: false, message: 'Server error fetching notifications' });
-  }
-};
+    if (typeof amountMl !== 'number' || amountMl <= 0) {
+      return res.status(400).json({ success: false, message: 'amountMl must be positive' });
+    }
 
-// mark as read notification
-const markNotificationRead = async (req, res) => {
-  try {
-    const { id } = req.params;
+    const user = await User.findById(req.user._id);
+    const targetMl = user?.waterSettings?.targetMl || 2000;
 
-    const notification = await Notification.findOneAndUpdate(
-      { _id: id, user: req.user._id },
-      { read: true },
-      { new: true }
+    await WellnessLog.findOneAndUpdate(
+      { user: req.user._id, date },
+      {
+        $inc: { 'water.consumedMl': amountMl },
+        $push: { 'water.entries': { amountMl, loggedAt: new Date() } },
+        $setOnInsert: { user: req.user._id, date, 'water.targetMl': targetMl }
+      },
+      { upsert: true, new: true }
     );
 
-    if (!notification) {
-      return res.status(404).json({ success: false, message: 'Notification not found' });
-    }
+    const updatedLog = await updateEnergyScore(req.user._id, date);
 
-    res.json({ success: true, notification });
+    return res.status(200).json({ success: true, message: 'Water entry added', data: updatedLog });
   } catch (error) {
-    console.error('Mark notification read error:', error);
-    res.status(500).json({ success: false, message: 'Server error updating notification' });
+    return res.status(500).json({ success: false, message: 'Failed to add water', error: error.message });
   }
 };
-// get settings
-const getSettings = async (req, res) => {
+
+// GET /api/wellness/water-settings
+const getWaterSettings = async (req, res) => {
   try {
-    const settings = await getOrCreateSettings(req.user._id);
-    res.json({ success: true, settings });
+    const user = await User.findById(req.user._id).select('waterSettings timezone');
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        timezone: user.timezone,
+        waterSettings: user.waterSettings || {
+          isActive: false,
+          targetMl: 2000,
+          wakeTime: '08:00',
+          sleepTime: '22:00',
+          intervalHours: 2,
+          isEmailAlertEnabled: false
+        }
+      }
+    });
   } catch (error) {
-    console.error('Get settings error:', error);
-    res.status(500).json({ success: false, message: 'Server error fetching settings' });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch water settings',
+      error: error.message
+    });
+  }
+};
+
+// PATCH /api/wellness/screen-time
+const updateScreenTime = async (req, res) => {
+  try {
+    const { date, usedMinutes, limitMinutes } = req.body;
+
+    if (!isValidDateString(date)) return res.status(400).json({ success: false, message: 'Invalid date' });
+
+    const update = { $setOnInsert: { user: req.user._id, date } };
+    const set = {};
+    if (usedMinutes !== undefined) set['screenTime.usedMinutes'] = usedMinutes;
+    if (limitMinutes !== undefined) set['screenTime.limitMinutes'] = limitMinutes;
+    if (Object.keys(set).length) update.$set = set;
+
+    await WellnessLog.findOneAndUpdate({ user: req.user._id, date }, update, { upsert: true, new: true });
+    
+    const updatedLog = await updateEnergyScore(req.user._id, date);
+
+    return res.status(200).json({ success: true, message: 'Screen time updated', data: updatedLog });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to update screen time', error: error.message });
+  }
+};
+
+// PATCH /api/wellness/sleep
+const updateSleep = async (req, res) => {
+  try {
+    const { date, hours, quality } = req.body;
+
+    if (!isValidDateString(date)) return res.status(400).json({ success: false, message: 'Invalid date' });
+
+    // Ensure hours is explicitly parsed as a Number
+    const parsedHours = hours !== undefined ? Number(hours) : undefined;
+
+    const set = { $setOnInsert: { user: req.user._id, date } };
+    if (parsedHours !== undefined) set['sleep.hours'] = parsedHours;
+    if (quality !== undefined) set['sleep.quality'] = quality;
+
+    await WellnessLog.findOneAndUpdate(
+      { user: req.user._id, date },
+      { $set: set, $setOnInsert: { user: req.user._id, date } },
+      { upsert: true, new: true }
+    );
+    
+    const updatedLog = await updateEnergyScore(req.user._id, date);
+
+    return res.status(200).json({ success: true, message: 'Sleep log updated', data: updatedLog });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to update sleep', error: error.message });
+  }
+};
+
+// PATCH /api/wellness/mood
+const updateMood = async (req, res) => {
+  try {
+    const { date, value, note } = req.body;
+
+    if (!isValidDateString(date)) return res.status(400).json({ success: false, message: 'Invalid date' });
+    if (value !== undefined && (value < 1 || value > 5)) return res.status(400).json({ success: false, message: 'Mood 1-5' });
+
+    const set = {};
+    if (value !== undefined) set['mood.value'] = value;
+    if (note !== undefined) set['mood.note'] = note;
+
+    await WellnessLog.findOneAndUpdate(
+      { user: req.user._id, date },
+      { $set: set, $setOnInsert: { user: req.user._id, date } },
+      { upsert: true, new: true }
+    );
+    
+    const updatedLog = await updateEnergyScore(req.user._id, date);
+
+    return res.status(200).json({ success: true, message: 'Mood updated', data: updatedLog });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to update mood', error: error.message });
+  }
+};
+
+// PATCH /api/wellness/activity
+const updateActivity = async (req, res) => {
+  try {
+    const { date, type, minutes } = req.body;
+
+    if (!isValidDateString(date)) return res.status(400).json({ success: false, message: 'Invalid date' });
+
+    const set = {};
+    if (type !== undefined) set['activity.type'] = type;
+    if (minutes !== undefined) set['activity.minutes'] = minutes;
+
+    await WellnessLog.findOneAndUpdate(
+      { user: req.user._id, date },
+      { $set: set, $setOnInsert: { user: req.user._id, date } },
+      { upsert: true, new: true }
+    );
+    
+    const updatedLog = await updateEnergyScore(req.user._id, date);
+
+    return res.status(200).json({ success: true, message: 'Activity logged', data: updatedLog });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to log activity', error: error.message });
   }
 };
 
 module.exports = {
-  logWater,
-  logScreenTime,
-  getCheckIn,
-  getHistory,
-  updateGoals,
-  deleteEntry,
-  updateReminderSettings,
-  getNotifications,
-  markNotificationRead,
-  getSettings
+  updateWaterSettings,
+  getWaterSettings,
+  getLogByDate,
+  getLogsInRange,
+  addWaterEntry,
+  updateScreenTime,
+  updateSleep,
+  updateMood,
+  updateActivity,
+  generateWeeklyReport
 };
