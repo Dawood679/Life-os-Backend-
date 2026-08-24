@@ -87,16 +87,36 @@ const analyzeJobMatch = async (req, res) => {
   }
 };
 
-// get all jobs
+// get all jobs (with pagination)
 const getJobMatches = async (req, res) => {
   try {
-    const jobMatches = await JobMatch.find({ user: req.user._id })
-      .select('-rawResponse -jobDescription -learningPlan')
-      .sort({ createdAt: -1 });
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const query = { user: req.user._id };
+
+    const [jobMatches, total] = await Promise.all([
+      JobMatch.find(query)
+        .select('-rawResponse -jobDescription -learningPlan')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      JobMatch.countDocuments(query)
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
       count: jobMatches.length,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasMore: page < totalPages
+      },
       jobMatches
     });
   } catch (error) {

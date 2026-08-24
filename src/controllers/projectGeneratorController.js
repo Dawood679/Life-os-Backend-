@@ -101,17 +101,33 @@ const generateProject = async (req, res) => {
   }
 };
 
-// 2. Get all projects for logged in user
+// 2. Get all projects for logged in user (Paginated)
 const getProjects = async (req, res) => {
   try {
-    const projects = await ProjectGenerator.find({ user: req.user._id })
-      .select("-rawResponse")
-      .sort({ createdAt: -1 });
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 10;
+    const skip = (page - 1) * limit;
+
+    const filter = { user: req.user._id };
+
+    const [projects, total] = await Promise.all([
+      ProjectGenerator.find(filter)
+        .select("-rawResponse")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      ProjectGenerator.countDocuments(filter),
+    ]);
 
     res.json({
       success: true,
-      count: projects.length,
       projects,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
     console.error("Get projects error:", error);

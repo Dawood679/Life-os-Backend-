@@ -37,7 +37,7 @@ const generateSummary = async (req, res) => {
 
     const response = await callAIWithFallback(ai, notesSummarizerConfig, prompt);
 
-    // 🎯 Fix 1: Clean markdown JSON wrap before parsing
+    // Clean markdown JSON wrap before parsing
     const cleanText = response.text
       .replace(/```json/g, '')
       .replace(/```/g, '')
@@ -54,7 +54,7 @@ const generateSummary = async (req, res) => {
       });
     }
 
-    // 🎯 Fix 2: Safe defaults to prevent Mongoose schema validation errors
+    // Safe defaults to prevent Mongoose schema validation errors
     const savedSummary = await NotesSummarizer.create({
       user: req.user._id,
       lectureText,
@@ -72,7 +72,7 @@ const generateSummary = async (req, res) => {
   } catch (error) {
     console.error('Generate summary error:', error);
 
-    // 🎯 Fix 3: Safe error message checking
+    //Safe error message checking
     const errorMessage = error?.message || '';
 
     if (errorMessage.includes('All 5 attempts failed')) {
@@ -89,16 +89,37 @@ const generateSummary = async (req, res) => {
   }
 };
 
-// 2. Get all summaries
+// 2. Get all summaries (with pagination)
 const getSummaries = async (req, res) => {
   try {
-    const summaries = await NotesSummarizer.find({ user: req.user._id })
-      .select('-rawResponse')
-      .sort({ createdAt: -1 });
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, parseInt(req.query.limit, 10) || 10);
+    const skip = (page - 1) * limit;
+
+    const query = { user: req.user._id };
+
+    const [summaries, total] = await Promise.all([
+      NotesSummarizer.find(query)
+        .select('-rawResponse')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      NotesSummarizer.countDocuments(query),
+    ]);
+
+    const totalPages = Math.ceil(total / limit);
 
     res.json({
       success: true,
       count: summaries.length,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1,
+      },
       summaries,
     });
   } catch (error) {

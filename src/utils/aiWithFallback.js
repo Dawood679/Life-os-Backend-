@@ -167,7 +167,7 @@ const callChatWithFallback = async (ai, config, history, message) => {
       console.log(`Chat attempt ${attempt} — Using ${currentProvider}`);
 
       if (currentProvider === 'gemini') {
-        // 🎯 Safe Check for Chat
+        // Safe Check for Chat
         if (!ai || !ai.chats) {
           throw new Error("Gemini Chat instance or API key is missing");
         }
