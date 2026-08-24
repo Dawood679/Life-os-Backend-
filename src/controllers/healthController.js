@@ -15,7 +15,7 @@ const HealthProfile = require('../models/HealthProfile');
 
 const addMedicine = async (req, res) => {
   try {
-    const { name, dosage, frequency, startDate, endDate, times } = req.body;
+    const { name, dosage, frequency, startDate, endDate, times, reminder } = req.body;
 
     if (!name || !startDate || !endDate) {
       return res.status(400).json({ success: false, message: 'Name, startDate, and endDate are required.' });
@@ -28,7 +28,8 @@ const addMedicine = async (req, res) => {
       frequency,
       startDate,
       endDate,
-      times: times || []
+      times: times || [],
+      reminder: reminder || { enabled: false, type: 'everyday', days: [], dates: [] }
     });
 
     res.status(201).json({ success: true, data: medicine });
@@ -70,11 +71,40 @@ const updateMedicineAdherence = async (req, res) => {
   }
 };
 
-// appointment
+const updateMedicine = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { dosage, frequency, endDate, times, reminder } = req.body;
 
+    const medicine = await Medicine.findOneAndUpdate(
+      { _id: id, user: req.user._id },
+      { 
+        $set: { 
+          dosage, 
+          frequency, 
+          endDate, 
+          times, 
+          reminder 
+        } 
+      },
+      { new: true } // Returns the updated document
+    );
+
+    if (!medicine) {
+      return res.status(404).json({ success: false, message: 'Medicine not found.' });
+    }
+
+    res.status(200).json({ success: true, data: medicine });
+  } catch (error) {
+    console.error('Update Medicine Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// appointment
 const addAppointment = async (req, res) => {
   try {
-    const { doctorName, appointmentDate, reason, questionsChecklist } = req.body;
+    const { doctorName, appointmentDate, reason, questionsChecklist, reminder } = req.body;
 
     if (!doctorName || !appointmentDate) {
       return res.status(400).json({ success: false, message: 'Doctor name and appointment date are required.' });
@@ -85,7 +115,8 @@ const addAppointment = async (req, res) => {
       doctorName,
       appointmentDate,
       reason,
-      questionsChecklist: questionsChecklist || []
+      questionsChecklist: questionsChecklist || [],
+      reminder: reminder || { inApp: true, email: false, isNotified: false }
     });
 
     res.status(201).json({ success: true, data: appointment });
@@ -213,18 +244,16 @@ const confirmPrescriptionData = async (req, res) => {
       medicines, 
       appointment, 
       adviceList, 
-      recordType, // 'active' or 'archive'
-      conditions // Changed from primaryIllness to conditions array
+      recordType,
+      conditions 
     } = req.body;
 
     const userId = req.user._id; 
 
-    // Combine condition names for a quick illness summary
     const combinedSummary = conditions && conditions.length > 0 
       ? conditions.map(c => c.name).join(', ') 
       : '';
 
-    // 1. Save the core prescription record
     const newPrescription = new Prescription({
       user: userId,
       fileUrl,
@@ -236,7 +265,6 @@ const confirmPrescriptionData = async (req, res) => {
     });
     await newPrescription.save();
 
-    // 2. Update the User's Central Health Profile (Vault) with multiple conditions
     if (conditions && conditions.length > 0) {
       let profile = await HealthProfile.findOne({ user: userId });
       if (!profile) {
@@ -249,7 +277,6 @@ const confirmPrescriptionData = async (req, res) => {
         const conditionData = { diseaseName: cond.name, identifiedDate: new Date() };
 
         if (cond.type === 'chronic') {
-          // Prevent duplicate chronic diseases
           const exists = profile.chronicConditions.find(c => c.diseaseName.toLowerCase() === cond.name.toLowerCase());
           if (!exists) profile.chronicConditions.push(conditionData);
         } 
@@ -260,13 +287,10 @@ const confirmPrescriptionData = async (req, res) => {
           profile.historicalRisks.push({ riskName: cond.name, identifiedDate: new Date() });
         }
       }
-
       await profile.save();
     }
 
-    // 3. Conditional Routing: Archive vs Active
     if (recordType === 'archive') {
-      // ARCHIVE MODE: Stop here. Do NOT create daily schedules or reminders.
       return res.status(201).json({ 
         success: true, 
         message: 'Old record archived successfully. Health profile updated.',
@@ -274,7 +298,6 @@ const confirmPrescriptionData = async (req, res) => {
       });
     }
 
-    // ACTIVE MODE: Proceed to create daily medicines and advice schedules
     if (medicines && medicines.length > 0) {
       const medDocs = medicines.map(m => ({
         user: userId,
@@ -283,7 +306,7 @@ const confirmPrescriptionData = async (req, res) => {
         dosage: m.dosage,
         frequency: m.frequency,
         startDate: new Date(),
-        endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Default 7 days
+        endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       }));
       await Medicine.insertMany(medDocs);
     }
@@ -299,10 +322,11 @@ const confirmPrescriptionData = async (req, res) => {
       await DoctorAdvice.insertMany(adviceDocs);
     }
     
-    // Handle Appointment logic
+    // UPDATED: Link appointment to the prescription
     if (appointment && appointment.appointmentDate) {
       await Appointment.create({
         user: userId,
+        prescription: newPrescription._id, // Added reference
         doctorName: appointment.doctorName || doctorName || 'Unknown Doctor',
         appointmentDate: appointment.appointmentDate,
         reason: combinedSummary || 'Follow-up'
@@ -381,42 +405,37 @@ const deletePrescription = async (req, res) => {
     const { id } = req.params;
     const userId = req.user._id;
 
-    // 1. Find and delete the prescription
     const prescription = await Prescription.findOneAndDelete({ _id: id, user: userId });
     
     if (!prescription) {
       return res.status(404).json({ success: false, message: 'Prescription not found.' });
     }
 
-    // 2. Cascading Delete: Active schedules (Medicines & Advices)
+    // UPDATED: Cascade delete medicines, advice, AND appointments
     if (prescription.recordType === 'active') {
       await Medicine.deleteMany({ prescriptionId: id, user: userId });
       await DoctorAdvice.deleteMany({ prescriptionId: id, user: userId });
+      await Appointment.deleteMany({ prescription: id, user: userId }); // Using 'prescription' as per your schema
     }
 
-    // 3. Smart Delete for HealthProfile Conditions
     if (prescription.illnessSummary) {
       const conditionNames = prescription.illnessSummary.split(',').map(name => name.trim());
       const conditionsToSafelyRemove = [];
 
-      // Check if ANY OTHER prescription still contains this condition
       for (const condition of conditionNames) {
         if (!condition) continue;
 
-        // Using regex with word boundary (\b) to match the exact condition name in other prescriptions
         const conditionStillExists = await Prescription.findOne({
           user: userId,
-          _id: { $ne: id }, // Exclude the deleted one
+          _id: { $ne: id },
           illnessSummary: { $regex: new RegExp(`\\b${condition}\\b`, 'i') } 
         });
 
-        // If no other prescription has this disease, mark it for removal
         if (!conditionStillExists) {
           conditionsToSafelyRemove.push(condition);
         }
       }
 
-      // 4. Finally, pull ONLY the conditions that are completely gone from history
       if (conditionsToSafelyRemove.length > 0) {
         await HealthProfile.findOneAndUpdate(
           { user: userId },
@@ -433,7 +452,7 @@ const deletePrescription = async (req, res) => {
 
     res.status(200).json({ 
       success: true, 
-      message: 'Prescription deleted. Health profile intelligently updated.' 
+      message: 'Prescription, schedules, appointments, and conditions safely deleted.' 
     });
   } catch (error) {
     console.error('Delete Prescription Error:', error);
@@ -441,11 +460,66 @@ const deletePrescription = async (req, res) => {
   }
 };
 
-// Exporting updated list
+
+
+// Delete individual Appointment
+const deleteAppointment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const appointment = await Appointment.findOneAndDelete({ _id: id, user: req.user._id });
+    
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: 'Appointment not found.' });
+    }
+
+    res.status(200).json({ success: true, message: 'Appointment deleted successfully.' });
+  } catch (error) {
+    console.error('Delete Appointment Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Delete individual Doctor Advice
+const deleteDoctorAdvice = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const advice = await DoctorAdvice.findOneAndDelete({ _id: id, user: req.user._id });
+    
+    if (!advice) {
+      return res.status(404).json({ success: false, message: 'Advice not found.' });
+    }
+
+    res.status(200).json({ success: true, message: 'Doctor advice deleted successfully.' });
+  } catch (error) {
+    console.error('Delete Advice Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const getHealthProfile = async (req, res) => {
+  try {
+    let profile = await HealthProfile.findOne({ user: req.user._id });
+    
+    if (!profile) {
+      profile = {
+        chronicConditions: [],
+        temporaryConditions: [],
+        historicalRisks: []
+      };
+    }
+
+    res.status(200).json({ success: true, data: profile });
+  } catch (error) {
+    console.error('Fetch Health Profile Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   addMedicine,
   getMedicines,
   updateMedicineAdherence,
+  updateMedicine,
   addAppointment,
   getAppointments,
   addDoctorAdvice,
@@ -456,5 +530,8 @@ module.exports = {
   getHealthInsights,
   getWeeklyHealthNarrative,
   deleteMedicine,
-  deletePrescription
+  deletePrescription,
+  deleteAppointment,
+  deleteDoctorAdvice,
+  getHealthProfile
 };

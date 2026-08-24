@@ -6,6 +6,7 @@ const connectDB = require("./src/config/db");
 const startReminderJob = require("./src/utils/reminderJob");
 const { writeLimiter } = require('./src/middleware/rateLimiter');
 const initWaterReminderCron = require("./src/utils/waterReminderCron");
+const { startHealthSchedulers } = require("./src/utils/healthScheduler");
 
 dotenv.config();
 connectDB();
@@ -13,6 +14,7 @@ connectDB();
 const app = express();
 startReminderJob();
 initWaterReminderCron();
+startHealthSchedulers();
 
 app.use(
   cors({
@@ -41,6 +43,8 @@ app.use('/api/job-match', require('./src/routes/jobMatchRoutes'));
 app.use('/api/resume', require('./src/routes/resumeRoutes'));
 app.use('/api/wellness', require('./src/routes/wellnessRoutes'));
 app.use('/api/health', require('./src/routes/healthRoutes'));
+
+app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 
 
 app.get("/", (req, res) => {
