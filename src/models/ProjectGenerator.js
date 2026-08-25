@@ -1,24 +1,31 @@
 const mongoose = require('mongoose');
 const { Type } = require('@google/genai');
 
-// 1. Subdocuments Schemas
-const folderItemSchema = new mongoose.Schema({
+const milestoneSchema = new mongoose.Schema({
+  stepNumber: { type: Number },
+  title: { type: String },
+  description: { type: String },
+  deliverable: { type: String },
+  checklist: [{ type: String }],
+  isCompleted: { type: Boolean, default: false }
+});
+
+const legacyFolderItemSchema = new mongoose.Schema({
   path: { type: String },
   description: { type: String }
 });
 
-const dbFieldSchema = new mongoose.Schema({
+const legacyDbFieldSchema = new mongoose.Schema({
   fieldName: { type: String },
   fieldType: { type: String },
   description: { type: String }
 });
 
-const dbModelSchema = new mongoose.Schema({
+const legacyDbModelSchema = new mongoose.Schema({
   modelName: { type: String },
-  fields: [dbFieldSchema]
+  fields: [legacyDbFieldSchema]
 });
 
-// 2. Main Project Generator Schema
 const projectGeneratorSchema = new mongoose.Schema(
   {
     user: {
@@ -26,84 +33,77 @@ const projectGeneratorSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
-    request: { type: String, required: true }, 
-    projectTitle: { type: String },
-    difficultyLevel: { type: String }, 
-    techStack: [{ type: String }],
+    request: { type: String, required: true },
+    planTitle: { type: String },
+    projectTitle: { type: String }, // Legacy alias
+    category: {
+      type: String,
+      default: 'general'
+    },
+    difficultyLevel: { type: String, default: 'intermediate' },
+    estimatedDuration: { type: String, default: '4 weeks' },
     description: { type: String },
+
+    // Universal milestone-driven roadmap
+    milestones: [milestoneSchema],
+    resourcesOrTools: [{ type: String }],
+
+    // Legacy fields for backward compatibility
+    techStack: [{ type: String }],
     features: [{ type: String }],
-    folderStructure: [folderItemSchema],
-    databaseSchema: [dbModelSchema],
+    folderStructure: [legacyFolderItemSchema],
+    databaseSchema: [legacyDbModelSchema],
+
     rawResponse: { type: String },
     generatedAt: { type: Date, default: Date.now }
   },
   { timestamps: true }
 );
 
-// 3. Gemini Structured Output Schema
+// Gemini Structured Output Schema
 const projectGeneratorResponseSchema = {
   type: Type.OBJECT,
   properties: {
-    projectTitle: { type: Type.STRING },
+    planTitle: { type: Type.STRING },
+    category: { type: Type.STRING },
     difficultyLevel: { type: Type.STRING },
-    techStack: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING }
-    },
+    estimatedDuration: { type: Type.STRING },
     description: { type: Type.STRING },
-    features: {
+    resourcesOrTools: {
       type: Type.ARRAY,
       items: { type: Type.STRING }
     },
-    folderStructure: {
+    milestones: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          path: { type: Type.STRING },
-          description: { type: Type.STRING }
-        },
-        required: ['path', 'description']
-      }
-    },
-    databaseSchema: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          modelName: { type: Type.STRING },
-          fields: {
+          stepNumber: { type: Type.INTEGER },
+          title: { type: Type.STRING },
+          description: { type: Type.STRING },
+          deliverable: { type: Type.STRING },
+          checklist: {
             type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                fieldName: { type: Type.STRING },
-                fieldType: { type: Type.STRING },
-                description: { type: Type.STRING }
-              },
-              required: ['fieldName', 'fieldType', 'description']
-            }
+            items: { type: Type.STRING }
           }
         },
-        required: ['modelName', 'fields']
+        required: ['stepNumber', 'title', 'description', 'deliverable', 'checklist']
       }
     }
   },
   required: [
-    'projectTitle',
+    'planTitle',
+    'category',
     'difficultyLevel',
-    'techStack',
+    'estimatedDuration',
     'description',
-    'features',
-    'folderStructure',
-    'databaseSchema'
+    'resourcesOrTools',
+    'milestones'
   ]
 };
 
-// 4. Create Model
 const ProjectGenerator = mongoose.model('ProjectGenerator', projectGeneratorSchema);
 
-// 5. Clean Combined Export
 module.exports = {
   ProjectGenerator,
   projectGeneratorResponseSchema

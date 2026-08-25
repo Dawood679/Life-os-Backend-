@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 const { Type } = require('@google/genai');
 
 const issueSchema = new mongoose.Schema({
+  lineOrSection: { type: String },
+  issue: { type: String },
+  suggestion: { type: String }
+});
+
+const legacyIssueSchema = new mongoose.Schema({
   line: { type: String },
   issue: { type: String },
   suggestion: { type: String }
@@ -14,78 +20,110 @@ const codeReviewSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
-    code: { type: String, required: true },
-    language: { type: String, default: 'javascript' },
-    overallScore: { type: Number }, 
+    inputContent: { type: String },
+    code: { type: String }, // Legacy alias for inputContent
+    languageOrDomain: { type: String, default: 'auto' },
+    domain: {
+      type: String,
+      enum: ['code', 'writing', 'business', 'academic', 'general', 'hybrid'],
+      default: 'general'
+    },
+    overallScore: { type: Number, min: 0, max: 100 },
     summary: { type: String },
-    bugs: [issueSchema],
-    performanceIssues: [issueSchema],
-    securityIssues: [issueSchema],
-    bestPractices: [issueSchema],
-    improvedCode: { type: String },    
+
+    // Multi-perspective evaluation (Technical & Business in 1 single call)
+    perspectives: {
+      technical: {
+        applicable: { type: Boolean, default: true },
+        score: { type: Number, default: 0 },
+        summary: { type: String, default: '' },
+        issues: [issueSchema],
+        bestPractices: [{ type: String }]
+      },
+      business: {
+        applicable: { type: Boolean, default: true },
+        score: { type: Number, default: 0 },
+        summary: { type: String, default: '' },
+        marketClarity: { type: String, default: 'N/A' },
+        suggestions: [{ type: String }],
+        actionItems: [{ type: String }]
+      }
+    },
+
+    improvedContent: { type: String },
+
+    // Backward-compatible fields
+    bugs: [legacyIssueSchema],
+    performanceIssues: [legacyIssueSchema],
+    securityIssues: [legacyIssueSchema],
+    bestPractices: [legacyIssueSchema],
+    improvedCode: { type: String },
+
     rawResponse: { type: String },
     generatedAt: { type: Date, default: Date.now }
   },
   { timestamps: true }
 );
 
-// for gemini
+// Gemini Structured Output Schema
 const codeReviewResponseSchema = {
   type: Type.OBJECT,
   properties: {
+    domain: { type: Type.STRING },
     overallScore: { type: Type.INTEGER },
     summary: { type: Type.STRING },
-    bugs: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          line: { type: Type.STRING },
-          issue: { type: Type.STRING },
-          suggestion: { type: Type.STRING }
+    perspectives: {
+      type: Type.OBJECT,
+      properties: {
+        technical: {
+          type: Type.OBJECT,
+          properties: {
+            applicable: { type: Type.BOOLEAN },
+            score: { type: Type.INTEGER },
+            summary: { type: Type.STRING },
+            issues: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  lineOrSection: { type: Type.STRING },
+                  issue: { type: Type.STRING },
+                  suggestion: { type: Type.STRING }
+                },
+                required: ['lineOrSection', 'issue', 'suggestion']
+              }
+            },
+            bestPractices: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
+          },
+          required: ['applicable', 'score', 'summary', 'issues', 'bestPractices']
         },
-        required: ['line', 'issue', 'suggestion']
-      }
+        business: {
+          type: Type.OBJECT,
+          properties: {
+            applicable: { type: Type.BOOLEAN },
+            score: { type: Type.INTEGER },
+            summary: { type: Type.STRING },
+            marketClarity: { type: Type.STRING },
+            suggestions: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            actionItems: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            }
+          },
+          required: ['applicable', 'score', 'summary', 'marketClarity', 'suggestions', 'actionItems']
+        }
+      },
+      required: ['technical', 'business']
     },
-    performanceIssues: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          line: { type: Type.STRING },
-          issue: { type: Type.STRING },
-          suggestion: { type: Type.STRING }
-        },
-        required: ['line', 'issue', 'suggestion']
-      }
-    },
-    securityIssues: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          line: { type: Type.STRING },
-          issue: { type: Type.STRING },
-          suggestion: { type: Type.STRING }
-        },
-        required: ['line', 'issue', 'suggestion']
-      }
-    },
-    bestPractices: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          line: { type: Type.STRING },
-          issue: { type: Type.STRING },
-          suggestion: { type: Type.STRING }
-        },
-        required: ['line', 'issue', 'suggestion']
-      }
-    },
-    improvedCode: { type: Type.STRING }
+    improvedContent: { type: Type.STRING }
   },
-  required: ['overallScore', 'summary', 'bugs', 'performanceIssues', 'securityIssues', 'bestPractices', 'improvedCode']
+  required: ['domain', 'overallScore', 'summary', 'perspectives', 'improvedContent']
 };
 
 module.exports = mongoose.model('CodeReview', codeReviewSchema);

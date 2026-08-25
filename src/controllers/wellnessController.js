@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Todo = require('../models/Todo'); 
 const { isValidDateString } = require('../utils/dateHelper');
 const { calculateEnergyScore } = require('../utils/energyScoreEngine');
+const lifeScoreService = require('../services/lifeScoreService');
 
 const { ai, weeklyReportConfig } = require('../config/gemini');
 const { callAIWithFallback } = require('../utils/aiWithFallback');
@@ -285,6 +286,12 @@ const addWaterEntry = async (req, res) => {
 
     const updatedLog = await updateEnergyScore(req.user._id, date);
 
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id, date);
+    } catch (scoreErr) {
+      console.error('Life score update warning:', scoreErr);
+    }
+
     return res.status(200).json({ success: true, message: 'Water entry added', data: updatedLog });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to add water', error: error.message });
@@ -364,6 +371,12 @@ const updateSleep = async (req, res) => {
     
     const updatedLog = await updateEnergyScore(req.user._id, date);
 
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id, date);
+    } catch (scoreErr) {
+      console.error('Life score update warning:', scoreErr);
+    }
+
     return res.status(200).json({ success: true, message: 'Sleep log updated', data: updatedLog });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to update sleep', error: error.message });
@@ -389,6 +402,12 @@ const updateMood = async (req, res) => {
     );
     
     const updatedLog = await updateEnergyScore(req.user._id, date);
+
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id, date);
+    } catch (scoreErr) {
+      console.error('Life score update warning:', scoreErr);
+    }
 
     return res.status(200).json({ success: true, message: 'Mood updated', data: updatedLog });
   } catch (error) {

@@ -103,6 +103,44 @@ const userSchema = new mongoose.Schema(
       sleepTime: { type: String, default: '22:00' }, // 'HH:MM'
       intervalHours: { type: Number, default: 2 },
       isEmailAlertEnabled: { type: Boolean, default: false }
+    },
+
+    // Phase 1: Universal LifeOS & Focus Settings
+    focusMode: {
+      type: String,
+      enum: ['balanced', 'career_sprint', 'student_exam', 'custom'],
+      default: 'balanced'
+    },
+    focusWeights: {
+      health: { type: Number, default: 0.35 },
+      learning: { type: Number, default: 0.40 },
+      career: { type: Number, default: 0.25 }
+    },
+    primaryDomain: {
+      type: String,
+      default: 'general'
+    },
+    focusGoal: {
+      type: String,
+      default: ''
+    },
+    verifiedSkills: [
+      {
+        skill: { type: String, required: true, trim: true },
+        category: { type: String, default: 'general' },
+        score: { type: Number, min: 0, max: 100 },
+        source: { type: String, default: 'quiz' }, // 'quiz' | 'work_review' | 'assessment'
+        verifiedAt: { type: Date, default: Date.now }
+      }
+    ],
+    dashboardWidgets: {
+      type: [String],
+      default: ['life_score', 'todays_focus', 'health_tracker', 'learning_hub', 'todos']
+    },
+    streak: {
+      current: { type: Number, default: 0 },
+      longest: { type: Number, default: 0 },
+      lastActiveDate: { type: String, default: '' } // 'YYYY-MM-DD'
     }
   },
   {

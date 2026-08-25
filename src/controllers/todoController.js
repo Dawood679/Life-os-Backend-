@@ -1,4 +1,5 @@
 const Todo = require('../models/Todo');
+const lifeScoreService = require('../services/lifeScoreService');
 
 // create todo
 const createTodo = async (req, res) => {
@@ -26,6 +27,12 @@ const createTodo = async (req, res) => {
       priority,
       dueDate
     });
+
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id);
+    } catch (scoreErr) {
+      console.error('Life score update error:', scoreErr);
+    }
 
     res.status(201).json({
       success: true,
@@ -121,6 +128,12 @@ const updateTodo = async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id);
+    } catch (scoreErr) {
+      console.error('Life score update error:', scoreErr);
+    }
+
     res.json({
       success: true,
       message: 'Todo updated successfully',
@@ -150,6 +163,12 @@ const deleteTodo = async (req, res) => {
         success: false,
         message: 'Todo not found'
       });
+    }
+
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id);
+    } catch (scoreErr) {
+      console.error('Life score update error:', scoreErr);
     }
 
     res.json({
