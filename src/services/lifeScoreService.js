@@ -5,6 +5,7 @@ const Quiz = require('../models/Quiz');
 const Todo = require('../models/Todo');
 const StudyPlan = require('../models/StudyPlan');
 const { ProjectGenerator } = require('../models/ProjectGenerator');
+const { InterviewSession } = require('../models/InterviewSession');
 
 /**
  * Standard Focus Mode Weight Configurations
@@ -93,11 +94,11 @@ class LifeScoreService {
     }
 
     // Career / Action Delta
-    const careerUnits = ((breakdown.actionMilestonesCompleted || 0) * 1.5) + (breakdown.todosCompleted || 0);
+    const careerUnits = ((breakdown.actionMilestonesCompleted || 0) * 1.5) + (breakdown.todosCompleted || 0) + ((breakdown.interviewsCompleted || 0) * 1.5);
     if (careerUnits < 2.0) {
       deltas.push({
         id: 'todos',
-        action: 'Complete 1 action milestone or to-do to reach 100% Career',
+        action: 'Complete 1 to-do, action milestone, or mock interview to reach 100% Career',
         points: Math.max(4, Math.round(weights.career * 100 * 0.3)),
         category: 'career',
         isCompleted: false
@@ -226,9 +227,15 @@ class LifeScoreService {
     const finalLearningScore = Math.min(100, Math.max(0, Math.round(learningComponentScore)));
 
     // 3. Fetch Career / Action Metrics (Todos + Action Plan Milestones completed TODAY)
-    const [userTodos, userProjects] = await Promise.all([
+    // 3. Fetch Career / Action Metrics (Todos + Action Plan Milestones + Mock Interviews completed TODAY)
+    const [userTodos, userProjects, todayInterviews] = await Promise.all([
       Todo.find({ user: userId }),
-      ProjectGenerator.find({ user: userId })
+      ProjectGenerator.find({ user: userId }),
+      InterviewSession.find({
+        user: userId,
+        status: 'completed',
+        completedAt: { $gte: startOfDay, $lte: endOfDay }
+      })
     ]);
 
     let todosCompletedToday = 0;
@@ -261,8 +268,19 @@ class LifeScoreService {
       }
     });
 
-    // Daily Career Velocity: Target = 2 action units (1 Milestone = 1.5 units, 1 Todo = 1 unit)
-    const earnedCareerActionUnits = (actionMilestonesCompletedToday * 1.5) + (todosCompletedToday * 1.0);
+    let interviewsCompletedToday = todayInterviews.length;
+    let interviewActionUnits = 0;
+    todayInterviews.forEach(sess => {
+      const score = sess.scorecard?.overallScore || 70;
+      if (score >= 75) {
+        interviewActionUnits += 2.0; // High quality mock interview gives instant full career quota!
+      } else {
+        interviewActionUnits += 1.5;
+      }
+    });
+
+    // Daily Career Velocity: Target = 2 action units (1 Mock Interview = 1.5-2 units, 1 Milestone = 1.5 units, 1 Todo = 1 unit)
+    const earnedCareerActionUnits = (actionMilestonesCompletedToday * 1.5) + (todosCompletedToday * 1.0) + interviewActionUnits;
 
     let careerComponentScore = 0;
     if (earnedCareerActionUnits >= 2.0) {
@@ -299,7 +317,8 @@ class LifeScoreService {
       todosCompleted: todosCompletedToday,
       todosTotal: todosTotal,
       actionMilestonesCompleted: actionMilestonesCompletedToday,
-      actionMilestonesTotal: actionMilestonesTotal
+      actionMilestonesTotal: actionMilestonesTotal,
+      interviewsCompleted: interviewsCompletedToday
     };
 
     // Calculate action suggestions

@@ -124,5 +124,10 @@ const studyPlanResponseSchema = {
   required: ['planTitle', 'summary', 'canonicalSkill', 'isSkillVerifiable', 'tasks', 'tips']
 };
 
-module.exports = mongoose.model('StudyPlan', studyPlanSchema);
+const StudyPlan = mongoose.model('StudyPlan', studyPlanSchema);
+StudyPlan.StudyPlan = StudyPlan;
+StudyPlan.studyPlanResponseSchema = studyPlanResponseSchema;
+
+module.exports = StudyPlan;
+module.exports.StudyPlan = StudyPlan;
 module.exports.studyPlanResponseSchema = studyPlanResponseSchema;
