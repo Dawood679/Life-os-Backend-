@@ -104,6 +104,7 @@ const toggleMilestone = async (req, res) => {
     }
 
     milestone.isCompleted = !milestone.isCompleted;
+    milestone.completedAt = milestone.isCompleted ? new Date() : null;
     await project.save();
 
     // Recalculate daily Life Score

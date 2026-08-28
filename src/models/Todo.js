@@ -29,6 +29,9 @@ const todoSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
+    completedAt: {
+      type: Date
+    },
     reminderSent: {
       type: Boolean,
       default: false

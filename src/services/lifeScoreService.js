@@ -3,6 +3,8 @@ const LifeScoreLog = require('../models/LifeScoreLog');
 const WellnessLog = require('../models/WellnessLog');
 const Quiz = require('../models/Quiz');
 const Todo = require('../models/Todo');
+const StudyPlan = require('../models/StudyPlan');
+const { ProjectGenerator } = require('../models/ProjectGenerator');
 
 /**
  * Standard Focus Mode Weight Configurations
@@ -40,19 +42,17 @@ class LifeScoreService {
     const consumedMl = breakdown.waterConsumedMl || 0;
     const waterCompleted = consumedMl >= targetMl;
     if (!waterCompleted) {
-      const remainingWaterPct = Math.min(1, (targetMl - consumedMl) / targetMl);
-      const points = Math.max(2, Math.round(weights.health * 40 * remainingWaterPct * 0.3));
       deltas.push({
         id: 'water',
-        action: 'Log 500ml water',
-        points: Math.min(8, points || 4),
+        action: 'Log 500ml water (+15 pts)',
+        points: Math.max(3, Math.round(weights.health * 40 * 0.35)),
         category: 'health',
         isCompleted: false
       });
     } else {
       deltas.push({
         id: 'water',
-        action: 'Water goal reached (2000ml)',
+        action: 'Water hydration goal reached (2000ml)',
         points: 0,
         category: 'health',
         isCompleted: true
@@ -62,62 +62,50 @@ class LifeScoreService {
     // Health: Sleep Log Delta
     const sleepLogged = (breakdown.sleepHours || 0) > 0;
     if (!sleepLogged) {
-      const points = Math.max(3, Math.round(weights.health * 40 * 0.4));
       deltas.push({
         id: 'sleep',
-        action: 'Log last night sleep',
-        points: points || 5,
+        action: 'Log last night sleep (+40 pts)',
+        points: Math.max(4, Math.round(weights.health * 40 * 0.4)),
         category: 'health',
         isCompleted: false
       });
     }
 
-    // Learning: Daily Quiz Delta
-    const quizCount = breakdown.quizzesCompleted || 0;
-    if (quizCount === 0) {
-      const points = Math.max(4, Math.round(weights.learning * 100 * 0.2));
+    // Learning: Study Task & Quiz Delta
+    const learningPoints = (breakdown.quizzesCompleted || 0) * 35 + (breakdown.studyTasksEarnedPoints || (breakdown.studyTasksCompleted || 0) * 25);
+    if (learningPoints < 50) {
+      const remainingNeeded = Math.max(15, 50 - learningPoints);
       deltas.push({
         id: 'quiz',
-        action: 'Pass 1 daily quiz (80%+)',
-        points: points || 8,
+        action: `Complete 1 study task or quiz (+${remainingNeeded} pts to reach 100% Learning)`,
+        points: Math.max(5, Math.round(weights.learning * 100 * 0.25)),
         category: 'learning',
         isCompleted: false
       });
     } else {
       deltas.push({
         id: 'quiz',
-        action: `${quizCount} quiz completed today`,
+        action: 'Daily Learning Quota 100% Achieved! 🌟',
         points: 0,
         category: 'learning',
         isCompleted: true
       });
     }
 
-    // Career / Productivity: To-Do Delta
-    const totalTodos = breakdown.todosTotal || 0;
-    const completedTodos = breakdown.todosCompleted || 0;
-    if (totalTodos > 0 && completedTodos < totalTodos) {
-      const remainingTodos = totalTodos - completedTodos;
-      const points = Math.max(2, Math.round(weights.career * 100 * (remainingTodos / totalTodos) * 0.3));
+    // Career / Action Delta
+    const careerUnits = ((breakdown.actionMilestonesCompleted || 0) * 1.5) + (breakdown.todosCompleted || 0);
+    if (careerUnits < 2.0) {
       deltas.push({
         id: 'todos',
-        action: `Complete ${remainingTodos} remaining task${remainingTodos > 1 ? 's' : ''}`,
-        points: Math.min(10, points || 5),
-        category: 'career',
-        isCompleted: false
-      });
-    } else if (totalTodos === 0) {
-      deltas.push({
-        id: 'todos',
-        action: 'Add and complete a priority to-do',
-        points: Math.max(3, Math.round(weights.career * 30)),
+        action: 'Complete 1 action milestone or to-do to reach 100% Career',
+        points: Math.max(4, Math.round(weights.career * 100 * 0.3)),
         category: 'career',
         isCompleted: false
       });
     } else {
       deltas.push({
         id: 'todos',
-        action: 'All daily tasks completed',
+        action: 'Daily Career Quota 100% Achieved! 🚀',
         points: 0,
         category: 'career',
         isCompleted: true
@@ -152,94 +140,139 @@ class LifeScoreService {
     let waterTarget = 2000;
     let sleepHours = 0;
     let moodScore = 0;
+    let healthLogged = false;
 
-    let healthComponentScore = 0;
-    let healthMetricCount = 0;
+    let sleepPoints = 0;
+    let waterPoints = 0;
+    let moodPoints = 0;
 
     if (wellnessLog) {
-      if (wellnessLog.energyScore !== null && wellnessLog.energyScore !== undefined && wellnessLog.energyScore > 0) {
-        healthComponentScore = wellnessLog.energyScore;
-        healthMetricCount = 3;
-      } else {
-        if (wellnessLog.water) {
-          waterConsumed = wellnessLog.water.consumedMl || 0;
-          waterTarget = wellnessLog.water.targetMl || 2000;
-          const waterScore = Math.min(100, Math.round((waterConsumed / waterTarget) * 100));
-          healthComponentScore += waterScore * 0.4;
-          healthMetricCount++;
-        }
-
-        if (wellnessLog.sleep && wellnessLog.sleep.hours) {
-          sleepHours = wellnessLog.sleep.hours;
-          let sleepScore = 50;
-          if (sleepHours >= 7 && sleepHours <= 9) sleepScore = 100;
-          else if (sleepHours === 6 || sleepHours === 10) sleepScore = 80;
-          else if (sleepHours === 5 || sleepHours === 11) sleepScore = 60;
-          else sleepScore = 30;
-
-          healthComponentScore += sleepScore * 0.4;
-          healthMetricCount++;
-        }
-
-        if (wellnessLog.mood && wellnessLog.mood.value) {
-          moodScore = wellnessLog.mood.value;
-          const normalizedMood = moodScore * 20; // 1-5 -> 20-100
-          healthComponentScore += normalizedMood * 0.2;
-          healthMetricCount++;
-        }
+      if (wellnessLog.sleep && wellnessLog.sleep.hours > 0) {
+        sleepHours = wellnessLog.sleep.hours;
+        sleepPoints = sleepHours >= 6 ? 45 : Math.round((sleepHours / 6) * 45);
+        healthLogged = true;
       }
-
       if (wellnessLog.water) {
         waterConsumed = wellnessLog.water.consumedMl || 0;
         waterTarget = wellnessLog.water.targetMl || 2000;
+        waterPoints = Math.min(45, Math.round((waterConsumed / waterTarget) * 45));
+        if (waterConsumed > 0) healthLogged = true;
       }
-      if (wellnessLog.sleep) sleepHours = wellnessLog.sleep.hours || 0;
-      if (wellnessLog.mood) moodScore = wellnessLog.mood.value || 0;
+      if (wellnessLog.mood && wellnessLog.mood.value) {
+        moodScore = wellnessLog.mood.value;
+        moodPoints = Math.min(10, moodScore * 2);
+        healthLogged = true;
+      }
     }
 
-    // Default baseline if no wellness logged yet today
-    if (healthMetricCount === 0) {
-      healthComponentScore = 30; // Base presence
+    let finalHealthScore = 0;
+    if (healthLogged) {
+      finalHealthScore = Math.min(100, sleepPoints + waterPoints + moodPoints);
+    } else {
+      finalHealthScore = 0; // Pure 0 start until user logs wellness today
     }
-    const finalHealthScore = Math.min(100, Math.max(0, Math.round(healthComponentScore)));
 
-    // 2. Fetch Learning Metrics (Quizzes)
-    const todayQuizzes = await Quiz.find({
-      user: userId,
-      isSubmitted: true,
-      updatedAt: { $gte: startOfDay, $lte: endOfDay }
-    });
+    // 2. Fetch Learning Metrics (Quizzes + Study Plan Tasks completed TODAY)
+    const [todayQuizzes, userStudyPlans] = await Promise.all([
+      Quiz.find({
+        user: userId,
+        isSubmitted: true,
+        updatedAt: { $gte: startOfDay, $lte: endOfDay }
+      }),
+      StudyPlan.find({ user: userId })
+    ]);
 
     let quizzesCompleted = todayQuizzes.length;
     let quizAvgPercentage = 0;
-    let learningComponentScore = 0;
-
     if (quizzesCompleted > 0) {
       const totalPct = todayQuizzes.reduce((acc, q) => acc + (q.percentage || (q.score / (q.totalMarks || 10)) * 100 || 0), 0);
       quizAvgPercentage = Math.round(totalPct / quizzesCompleted);
-      learningComponentScore = Math.min(100, 40 + quizAvgPercentage * 0.6); // 40 base + up to 60 for performance
+    }
+
+    let studyTasksTotal = 0;
+    let studyTasksCompletedToday = 0;
+    let studyTasksEarnedPointsToday = 0;
+
+    userStudyPlans.forEach(plan => {
+      if (plan.tasks && Array.isArray(plan.tasks)) {
+        studyTasksTotal += plan.tasks.length;
+        plan.tasks.forEach(t => {
+          if (t.isCompleted) {
+            const completedDate = t.completedAt ? new Date(t.completedAt) : new Date(plan.updatedAt);
+            if (completedDate >= startOfDay && completedDate <= endOfDay) {
+              studyTasksCompletedToday++;
+              studyTasksEarnedPointsToday += t.points || 25;
+            }
+          }
+        });
+      }
+    });
+
+    // Daily Learning Velocity: Target = 50 points in a day gives 100/100!
+    const earnedDailyLearningPoints = (quizzesCompleted * 35) + studyTasksEarnedPointsToday;
+
+    let learningComponentScore = 0;
+    if (earnedDailyLearningPoints >= 50) {
+      learningComponentScore = 100; // Full 100/100 reached!
+    } else if (earnedDailyLearningPoints >= 30) {
+      learningComponentScore = Math.round(75 + ((earnedDailyLearningPoints - 30) / 20) * 25);
+    } else if (earnedDailyLearningPoints >= 15) {
+      learningComponentScore = Math.round(50 + ((earnedDailyLearningPoints - 15) / 15) * 25);
+    } else if (earnedDailyLearningPoints > 0) {
+      learningComponentScore = Math.round((earnedDailyLearningPoints / 15) * 50);
     } else {
-      // Baseline if user has verified skills previously or active learning profile
-      const verifiedCount = (user.verifiedSkills && user.verifiedSkills.length) || 0;
-      learningComponentScore = Math.min(40, verifiedCount * 10 || 25);
+      learningComponentScore = 0; // Pure 0 start until user completes study task/quiz today
     }
     const finalLearningScore = Math.min(100, Math.max(0, Math.round(learningComponentScore)));
 
-    // 3. Fetch Career / Productivity Metrics (Todos)
-    const todayTodos = await Todo.find({
-      user: userId,
-      createdAt: { $lte: endOfDay }
+    // 3. Fetch Career / Action Metrics (Todos + Action Plan Milestones completed TODAY)
+    const [userTodos, userProjects] = await Promise.all([
+      Todo.find({ user: userId }),
+      ProjectGenerator.find({ user: userId })
+    ]);
+
+    let todosCompletedToday = 0;
+    let todosTotal = 0;
+    userTodos.forEach(t => {
+      if (new Date(t.createdAt) <= endOfDay) {
+        todosTotal++;
+        if (t.isCompleted) {
+          const compDate = t.completedAt ? new Date(t.completedAt) : new Date(t.updatedAt);
+          if (compDate >= startOfDay && compDate <= endOfDay) {
+            todosCompletedToday++;
+          }
+        }
+      }
     });
 
-    const todosTotal = todayTodos.length;
-    const todosCompleted = todayTodos.filter((t) => t.isCompleted).length;
-    let careerComponentScore = 0;
+    let actionMilestonesTotal = 0;
+    let actionMilestonesCompletedToday = 0;
+    userProjects.forEach(proj => {
+      if (proj.milestones && Array.isArray(proj.milestones)) {
+        actionMilestonesTotal += proj.milestones.length;
+        proj.milestones.forEach(m => {
+          if (m.isCompleted) {
+            const compDate = m.completedAt ? new Date(m.completedAt) : new Date(proj.updatedAt);
+            if (compDate >= startOfDay && compDate <= endOfDay) {
+              actionMilestonesCompletedToday++;
+            }
+          }
+        });
+      }
+    });
 
-    if (todosTotal > 0) {
-      const todoRatio = todosCompleted / todosTotal;
-      careerComponentScore = Math.round(todoRatio * 100);
+    // Daily Career Velocity: Target = 2 action units (1 Milestone = 1.5 units, 1 Todo = 1 unit)
+    const earnedCareerActionUnits = (actionMilestonesCompletedToday * 1.5) + (todosCompletedToday * 1.0);
+
+    let careerComponentScore = 0;
+    if (earnedCareerActionUnits >= 2.0) {
+      careerComponentScore = 100; // Full 100/100 reached!
+    } else if (earnedCareerActionUnits >= 1.0) {
+      careerComponentScore = Math.round(65 + ((earnedCareerActionUnits - 1.0) / 1.0) * 35);
+    } else if (earnedCareerActionUnits > 0) {
+      careerComponentScore = Math.round(earnedCareerActionUnits * 65);
     } else {
-      careerComponentScore = 50; // Neutral if no to-dos assigned
+      careerComponentScore = 0; // Pure 0 start until user completes action milestone/todo today
     }
     const finalCareerScore = Math.min(100, Math.max(0, Math.round(careerComponentScore)));
 
@@ -260,9 +293,13 @@ class LifeScoreService {
       moodScore: moodScore,
       quizzesCompleted: quizzesCompleted,
       quizAvgPercentage: quizAvgPercentage,
-      studyTasksCompleted: 0,
-      todosCompleted: todosCompleted,
-      todosTotal: todosTotal
+      studyTasksCompleted: studyTasksCompletedToday,
+      studyTasksTotal: studyTasksTotal,
+      studyTasksEarnedPoints: studyTasksEarnedPointsToday,
+      todosCompleted: todosCompletedToday,
+      todosTotal: todosTotal,
+      actionMilestonesCompleted: actionMilestonesCompletedToday,
+      actionMilestonesTotal: actionMilestonesTotal
     };
 
     // Calculate action suggestions
@@ -288,8 +325,8 @@ class LifeScoreService {
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
-    // 5. Update User Streak (If activity qualifies: totalScore >= 30)
-    if (totalScore >= 30) {
+    // 5. Update User Streak (If activity qualifies: any meaningful action or score >= 15)
+    if (totalScore >= 15 || healthLogged || earnedDailyLearningPoints > 0 || earnedCareerActionUnits > 0) {
       const todayFormatted = this.getFormattedDate();
       const lastActive = user.streak?.lastActiveDate;
 

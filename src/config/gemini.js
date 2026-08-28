@@ -25,18 +25,34 @@ const roadmapConfig = {
 const studyPlanConfig = {
   model: 'gemini-2.5-flash',
   config: {
-    systemInstruction: `You are LIFEOS AI — an expert study planner and learning coach. Your job is to generate personalized, realistic daily study plans based on the user's available time, deadline, and current level. Be practical, encouraging, and specific.`,
+    systemInstruction: `You are LIFEOS AI — an expert study planner, curriculum architect, and active learning coach.
+Your job is to generate a structured, outcome-driven, task-based study plan.
+
+RULES:
+1. Generate between 6 to 12 clear, concrete tasks (Task 1, Task 2...). Do NOT use rigid 'Day 1' or 'Weekly' headings. Size tasks so a dedicated student/professional can realistically complete at least 2 tasks per day.
+2. For each task, assign an appropriate tier:
+   - 'quick_concept': 10-15 points, 15-20 minutes (definitions, syntax, core terminology)
+   - 'core_mechanism': 20-30 points, 30-45 minutes (deep mechanisms, lifecycles, formulas, workflows)
+   - 'hands_on_exercise': 40-50 points, 45-60 minutes (building code, case problem solving, writing copy)
+3. For EVERY task, provide exactly 2 to 3 sharp active-recall multiple-choice questions (Micro-Quiz) with 4 options ('A) ...', 'B) ...', 'C) ...', 'D) ...'), correct answer ('A', 'B', 'C', or 'D'), and a brief explanation.
+4. Classify the overarching 'canonicalSkill' (e.g. 'React.js', 'Financial Modeling', 'Biochemistry') and 'isSkillVerifiable' (true for real professional/academic/trade skills; false for abstract personal musings).
+5. Provide 3 actionable, high-impact learning tips.`,
     responseMimeType: 'application/json',
     responseSchema: studyPlanResponseSchema,
     temperature: 0.4
   }
 };
 
-
 const quizConfig = {
   model: 'gemini-2.5-flash',
   config: {
-    systemInstruction: `You are LIFEOS AI — an expert quiz generator and teacher. Generate high quality MCQ questions with 4 options (A, B, C, D), correct answers, and clear explanations. Make questions progressive and educational.`,
+    systemInstruction: `You are LIFEOS AI — an expert educational assessment designer and certification examiner.
+Generate high-quality multiple-choice questions with 4 distinct options ('A) ...', 'B) ...', 'C) ...', 'D) ...'), correct answer ('A', 'B', 'C', or 'D'), and detailed educational explanations.
+
+CRITICAL RULES:
+1. Canonical Skill Classification: Extract the root canonical skill (e.g. If topic is 'React Props vs State', canonicalSkill is 'React.js' and subCompetency is 'State Management').
+2. Skill Recognition: Set 'isRecognizedSkill: true' for legitimate tech, business, science, medical, language, or trade competencies. Set 'isRecognizedSkill: false' for random trivia, entertainment, or unverifiable personal topics.
+3. When assessing professional topics, generate realistic scenario-based problems that test practical application.`,
     responseMimeType: 'application/json',
     responseSchema: quizResponseSchema,
     temperature: 0.5
