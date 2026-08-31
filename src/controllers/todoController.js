@@ -6,26 +6,25 @@ const createTodo = async (req, res) => {
   try {
     const { title, description, priority, dueDate } = req.body;
 
-    if (!title) {
+    if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
         message: 'Title is required'
       });
     }
 
-    if (!dueDate) {
-      return res.status(400).json({
-        success: false,
-        message: 'Date and time is required'
-      });
-    }
+    const validPriority = ['low', 'medium', 'high', 'urgent'].includes(priority)
+      ? priority
+      : 'medium';
+
+    const validDueDate = dueDate ? new Date(dueDate) : new Date();
 
     const todo = await Todo.create({
       user: req.user._id,
-      title,
-      description,
-      priority,
-      dueDate
+      title: title.trim(),
+      description: description ? description.trim() : '',
+      priority: validPriority,
+      dueDate: isNaN(validDueDate.getTime()) ? new Date() : validDueDate
     });
 
     try {
@@ -43,7 +42,7 @@ const createTodo = async (req, res) => {
     console.error('Create todo error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error creating todo'
+      message: error.message || 'Server error creating todo'
     });
   }
 };
