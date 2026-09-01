@@ -48,6 +48,7 @@ app.use('/api/onboarding', require('./src/routes/onboardingRoutes'));
 app.use('/api/interview', require('./src/routes/interviewRoutes'));
 app.use('/api/job-applications', require('./src/routes/jobApplicationRoutes'));
 app.use('/api/daily-briefing', require('./src/routes/dailyBriefingRoutes'));
+app.use('/api/rescheduler', require('./src/routes/reschedulerRoutes'));
 
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 
