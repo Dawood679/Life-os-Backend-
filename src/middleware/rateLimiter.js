@@ -37,4 +37,16 @@ const writeLimiter = rateLimit({
   legacyHeaders: false
 });
 
-module.exports = { authLimiter, otpLimiter, writeLimiter };
+// copilot AI assistant - 15 requests per 1 minute per IP
+const copilotLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 15,
+  message: {
+    success: false,
+    message: 'AI Copilot rate limit exceeded. Please wait a minute before making more requests.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+module.exports = { authLimiter, otpLimiter, writeLimiter, copilotLimiter };

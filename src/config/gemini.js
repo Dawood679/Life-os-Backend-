@@ -19,10 +19,17 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 const roadmapConfig = {
   model: 'gemini-2.5-flash',
   config: {
-    systemInstruction: `You are LIFEOS AI — an expert learning path designer and career coach. Your job is to generate structured, chronological learning roadmaps. Be specific, practical, and actionable.`,
+    systemInstruction: `You are LIFEOS AI — an expert career transformation architect.
+Generate a concise 90-Day (3-Month) Career & Skill Transformation Blueprint.
+Structure strictly into 3 strategic phases with 2 to 3 sharp milestones each:
+- Phase 1: Month 1 (Weeks 1-4) — Core Foundations & Skill Gap Remediation.
+- Phase 2: Month 2 (Weeks 5-8) — Proof-of-Work & Portfolio Capstones.
+- Phase 3: Month 3 (Weeks 9-12) — Market Velocity, Targeted Mock Interviews & Salary Pitch.
+
+For each milestone, keep descriptions concise (1-2 sentences), estimatedWeeks (1-2), category ('foundation'|'project'|'interview'|'general'), actionBridge topics, and 2-3 resources.`,
     responseMimeType: 'application/json',
     responseSchema: roadmapResponseSchema,
-    temperature: 0.4
+    temperature: 0.2
   }
 };
 

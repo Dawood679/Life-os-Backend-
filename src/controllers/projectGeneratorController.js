@@ -222,9 +222,53 @@ const deleteProject = async (req, res) => {
   }
 };
 
+const Todo = require("../models/Todo");
+
+// Bridge project milestone to active Todo agenda
+const bridgeMilestoneToTodo = async (req, res) => {
+  try {
+    const { id, stepNumber } = req.params;
+    const project = await ProjectGenerator.findOne({ _id: id, user: req.user._id });
+    if (!project) return res.status(404).json({ success: false, message: "Action plan not found" });
+
+    const milestone = project.milestones.find(m => m.stepNumber === Number(stepNumber));
+    if (!milestone) return res.status(404).json({ success: false, message: "Milestone not found" });
+
+    const taskTitle = `[Action Plan] ${project.planTitle || project.request}: ${milestone.title}`;
+    const existingTodo = await Todo.findOne({ user: req.user._id, title: taskTitle, isCompleted: false });
+
+    if (existingTodo) {
+      return res.status(200).json({
+        success: true,
+        alreadyExists: true,
+        message: "This milestone is already on your active Agenda!",
+        todo: existingTodo
+      });
+    }
+
+    const todo = await Todo.create({
+      user: req.user._id,
+      title: taskTitle,
+      priority: "high",
+      dueDate: new Date(),
+    });
+
+    res.status(201).json({
+      success: true,
+      alreadyExists: false,
+      message: "Project milestone scheduled directly to your Agenda! 📅",
+      todo
+    });
+  } catch (error) {
+    console.error("Bridge project milestone error:", error);
+    res.status(500).json({ success: false, message: "Server error scheduling project milestone" });
+  }
+};
+
 module.exports = { 
   generateProject, 
   toggleMilestone,
+  bridgeMilestoneToTodo,
   getProjects, 
   getProject, 
   deleteProject 

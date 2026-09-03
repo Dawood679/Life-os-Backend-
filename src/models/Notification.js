@@ -37,7 +37,7 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['water_reminder', 'medicine_reminder', 'daily_briefing', 'system'],
+      enum: ['water_reminder', 'medicine_reminder', 'daily_briefing', 'todo_reminder', 'system'],
       default: 'system'
     },
     read: {

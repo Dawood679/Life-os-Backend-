@@ -4,7 +4,7 @@ const lifeScoreService = require('../services/lifeScoreService');
 // create todo
 const createTodo = async (req, res) => {
   try {
-    const { title, description, priority, dueDate } = req.body;
+    const { title, description, priority, dueDate, repeat, customDays, notificationChannel, reminderMinutesBefore } = req.body;
 
     if (!title || !title.trim()) {
       return res.status(400).json({
@@ -18,13 +18,32 @@ const createTodo = async (req, res) => {
       : 'medium';
 
     const validDueDate = dueDate ? new Date(dueDate) : new Date();
+    const finalDueDate = isNaN(validDueDate.getTime()) ? new Date() : validDueDate;
+
+    const validRepeat = ['none', 'daily', 'weekdays', 'weekly', 'monthly', 'custom'].includes(repeat)
+      ? repeat
+      : 'none';
+
+    const validDays = Array.isArray(customDays) ? customDays.map(Number).filter(n => n >= 0 && n <= 6) : [];
+
+    const validChannel = ['in_app', 'email', 'both', 'none'].includes(notificationChannel)
+      ? notificationChannel
+      : 'in_app';
+
+    const offsetMinutes = Number(reminderMinutesBefore) >= 0 ? Number(reminderMinutesBefore) : 10;
+    const reminderTime = new Date(finalDueDate.getTime() - offsetMinutes * 60 * 1000);
 
     const todo = await Todo.create({
       user: req.user._id,
       title: title.trim(),
       description: description ? description.trim() : '',
       priority: validPriority,
-      dueDate: isNaN(validDueDate.getTime()) ? new Date() : validDueDate
+      dueDate: finalDueDate,
+      repeat: validRepeat,
+      customDays: validDays,
+      notificationChannel: validChannel,
+      reminderMinutesBefore: offsetMinutes,
+      reminderTime: reminderTime
     });
 
     try {
@@ -100,7 +119,7 @@ const getTodo = async (req, res) => {
 const updateTodo = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, priority, dueDate, isCompleted } = req.body;
+    const { title, description, priority, dueDate, repeat, customDays, notificationChannel, reminderMinutesBefore, isCompleted } = req.body;
 
     const existing = await Todo.findOne({ _id: id, user: req.user._id });
     if (!existing) {
@@ -111,13 +130,27 @@ const updateTodo = async (req, res) => {
     if (title !== undefined) updateFields.title = title;
     if (description !== undefined) updateFields.description = description;
     if (priority !== undefined) updateFields.priority = priority;
-    if (dueDate !== undefined) updateFields.dueDate = dueDate;
+    if (repeat !== undefined) updateFields.repeat = repeat;
+    if (customDays !== undefined && Array.isArray(customDays)) {
+      updateFields.customDays = customDays.map(Number).filter(n => n >= 0 && n <= 6);
+    }
+    if (notificationChannel !== undefined) updateFields.notificationChannel = notificationChannel;
+    if (reminderMinutesBefore !== undefined) updateFields.reminderMinutesBefore = Number(reminderMinutesBefore);
+
+    const activeDueDate = dueDate !== undefined ? new Date(dueDate) : existing.dueDate;
+    if (dueDate !== undefined) {
+      updateFields.dueDate = activeDueDate;
+    }
+
+    const activeOffset = reminderMinutesBefore !== undefined ? Number(reminderMinutesBefore) : (existing.reminderMinutesBefore || 10);
+    updateFields.reminderTime = new Date(new Date(activeDueDate).getTime() - activeOffset * 60 * 1000);
+
     if (isCompleted !== undefined) {
       updateFields.isCompleted = isCompleted;
       updateFields.completedAt = isCompleted ? new Date() : null;
     }
 
-   if (
+    if (
       dueDate &&
       new Date(dueDate).getTime() !== new Date(existing.dueDate).getTime()
     ) {
