@@ -58,6 +58,8 @@ const dailyBriefingSchema = new mongoose.Schema(
     healthWellnessAdvice: { type: String, trim: true, default: '' },
     // Life score delta suggestion to hit 100/100
     lifeScoreInsight: { type: String, trim: true, default: '' },
+    // Dedicated Human Conversational Audio Script
+    spokenAudioScript: { type: String, trim: true, default: '' },
     // Curated domain-relevant quote
     motivationalQuote: { type: String, trim: true, default: '' },
     // Deterministic snapshot of facts when generated

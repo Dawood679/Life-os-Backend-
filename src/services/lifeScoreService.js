@@ -373,7 +373,7 @@ class LifeScoreService {
           `Career/Productivity Score: ${finalCareerScore}/100 (${Math.round((weights.career || 0.25) * 100)}% weight)`
         ]
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
     // 5. Update User Streak (If activity qualifies: any meaningful action or score >= 15)

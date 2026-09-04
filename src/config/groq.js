@@ -27,16 +27,23 @@ async function callGroq(prompt, systemInstruction = '', messagesHistory = [], fo
 
     const payload = {
       messages: messages,
-      model: 'qwen/qwen3.8-27b',
+      model: 'openai/gpt-oss-120b',
+      max_tokens: 800,
     };
 
     if (forceJson) {
       payload.response_format = { type: 'json_object' };
     }
 
-    const chatCompletion = await groq.chat.completions.create(payload);
-
-    return chatCompletion.choices[0]?.message?.content || '';
+    try {
+      const chatCompletion = await groq.chat.completions.create(payload);
+      return chatCompletion.choices[0]?.message?.content || '';
+    } catch (primaryErr) {
+      console.warn(`Groq primary model failed (${primaryErr.message}), trying backup model openai/gpt-oss-20b...`);
+      payload.model = 'openai/gpt-oss-20b';
+      const backupCompletion = await groq.chat.completions.create(payload);
+      return backupCompletion.choices[0]?.message?.content || '';
+    }
   } catch (error) {
     console.error('Groq Execution Error:', error.message);
     throw error;

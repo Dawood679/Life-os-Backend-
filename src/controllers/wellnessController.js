@@ -200,7 +200,7 @@ const updateWaterSettings = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       req.user._id,
       { $set: updateFields },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     ).select('-password');
 
     return res.status(200).json({
@@ -274,14 +274,28 @@ const addWaterEntry = async (req, res) => {
     const user = await User.findById(req.user._id);
     const targetMl = user?.waterSettings?.targetMl || 2000;
 
+    const existingLog = await WellnessLog.findOne({ user: req.user._id, date });
+    const currentConsumed = existingLog?.water?.consumedMl || 0;
+
+    if (currentConsumed >= targetMl) {
+      return res.status(200).json({
+        success: true,
+        message: `Daily water target of ${targetMl}ml has already been achieved! Great job staying hydrated 💧`,
+        data: existingLog
+      });
+    }
+
+    // Clamp addition so consumedMl does not exceed targetMl
+    const actualAmount = Math.min(amountMl, targetMl - currentConsumed);
+
     await WellnessLog.findOneAndUpdate(
       { user: req.user._id, date },
       {
-        $inc: { 'water.consumedMl': amountMl },
-        $push: { 'water.entries': { amountMl, loggedAt: new Date() } },
+        $inc: { 'water.consumedMl': actualAmount },
+        $push: { 'water.entries': { amountMl: actualAmount, loggedAt: new Date() } },
         $setOnInsert: { user: req.user._id, date, 'water.targetMl': targetMl }
       },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
 
     const updatedLog = await updateEnergyScore(req.user._id, date);
@@ -339,7 +353,7 @@ const updateScreenTime = async (req, res) => {
     if (limitMinutes !== undefined) set['screenTime.limitMinutes'] = limitMinutes;
     if (Object.keys(set).length) update.$set = set;
 
-    await WellnessLog.findOneAndUpdate({ user: req.user._id, date }, update, { upsert: true, new: true });
+    await WellnessLog.findOneAndUpdate({ user: req.user._id, date }, update, { upsert: true, returnDocument: 'after' });
     
     const updatedLog = await updateEnergyScore(req.user._id, date);
 
@@ -366,7 +380,7 @@ const updateSleep = async (req, res) => {
     await WellnessLog.findOneAndUpdate(
       { user: req.user._id, date },
       { $set: set, $setOnInsert: { user: req.user._id, date } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     
     const updatedLog = await updateEnergyScore(req.user._id, date);
@@ -398,7 +412,7 @@ const updateMood = async (req, res) => {
     await WellnessLog.findOneAndUpdate(
       { user: req.user._id, date },
       { $set: set, $setOnInsert: { user: req.user._id, date } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     
     const updatedLog = await updateEnergyScore(req.user._id, date);
@@ -429,7 +443,7 @@ const updateActivity = async (req, res) => {
     await WellnessLog.findOneAndUpdate(
       { user: req.user._id, date },
       { $set: set, $setOnInsert: { user: req.user._id, date } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     );
     
     const updatedLog = await updateEnergyScore(req.user._id, date);

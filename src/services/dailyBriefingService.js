@@ -71,6 +71,7 @@ class DailyBriefingService {
     let todosActive = 0;
     let todosCompletedToday = 0;
     const highPriorityTodos = [];
+    const activeTodos = [];
     userTodos.forEach((t) => {
       if (t.isCompleted) {
         const compDate = t.completedAt ? new Date(t.completedAt) : new Date(t.updatedAt);
@@ -79,6 +80,7 @@ class DailyBriefingService {
         }
       } else {
         todosActive++;
+        activeTodos.push({ title: t.title, priority: t.priority || 'medium' });
         if (t.priority === 'high' || t.priority === 'urgent') {
           highPriorityTodos.push({ title: t.title, priority: t.priority });
         }
@@ -168,6 +170,7 @@ class DailyBriefingService {
         streakSecured,
         todosActive,
         todosCompletedToday,
+        activeTodos,
         highPriorityTodos,
         todayInterviewsScheduled,
         followUpsDueToday,
@@ -183,15 +186,83 @@ class DailyBriefingService {
   }
 
   /**
+   * Zero-Token Deterministic Human Conversational Audio Script Builder
+   * Constructs natural, empathetic, spoken English briefing with exact Life Score, task counts, and adaptive motivation.
+   */
+  buildConversationalAudioScript(userName, stats, period, localHour = null, motivationalQuote = null) {
+    const isMorning = period === 'morning';
+    const score = stats.compositeScore || 0;
+    const completedTasks = stats.todosCompletedToday || 0;
+    const totalTasks = (stats.todosActive || 0) + completedTasks;
+    const water = stats.waterConsumedMl || 0;
+    const waterTarget = stats.waterTargetMl || 2000;
+
+    let greeting = `Good morning, ${userName}.`;
+    if (localHour !== null && localHour !== undefined) {
+      if (localHour >= 12 && localHour < 17) greeting = `Good afternoon, ${userName}.`;
+      else if (localHour >= 17 && localHour < 22) greeting = `Good evening, ${userName}.`;
+      else if (localHour >= 22 || localHour < 4) greeting = `Welcome back, ${userName}.`;
+      else greeting = `Good morning, ${userName}.`;
+    } else if (!isMorning) {
+      greeting = `Good evening, ${userName}.`;
+    }
+
+    let scoreSection = `Your Life Score today is currently sitting at ${score} out of 100.`;
+
+    // Exact Dashboard Task Section
+    let taskSection = "";
+    const primaryTask = stats.highPriorityTodos?.[0]?.title || stats.activeTodos?.[0]?.title;
+    const secondaryTask = stats.highPriorityTodos?.[1]?.title || stats.activeTodos?.[1]?.title;
+
+    if (totalTasks === 0) {
+      taskSection = isMorning
+        ? `Your agenda is clean for today with no scheduled tasks.`
+        : `You had a quiet agenda with no scheduled tasks today.`;
+    } else if (completedTasks === totalTasks && totalTasks > 0) {
+      taskSection = `You have completed all ${completedTasks} of your scheduled tasks today! Tremendous execution.`;
+    } else if (primaryTask) {
+      taskSection = `You have ${stats.todosActive} active task${stats.todosActive > 1 ? 's' : ''} on your agenda today. Your top priority is "${primaryTask}"${secondaryTask ? `, followed by "${secondaryTask}"` : ''}.`;
+    } else {
+      taskSection = `You've completed ${completedTasks} out of ${totalTasks} tasks today.`;
+    }
+
+    let empathySection = "";
+    if (stats.todayInterviewsScheduled && stats.todayInterviewsScheduled.length > 0) {
+      empathySection = `Your interview round with ${stats.todayInterviewsScheduled[0].company} is scheduled today. Focus on calm confidence and your strengths.`;
+    } else if (stats.followUpsDueToday && stats.followUpsDueToday.length > 0) {
+      empathySection = `You have a job application follow-up due today with ${stats.followUpsDueToday[0].company}.`;
+    }
+
+    let hydrationSection = "";
+    if (water < waterTarget) {
+      hydrationSection = `Make sure to drink ${waterTarget - water}ml more water before bed to hit your daily hydration target.`;
+    } else {
+      hydrationSection = `Your hydration goal is fully secured.`;
+    }
+
+    const defaultQuote = "Small daily improvements over time lead to stunning results. Keep building momentum!";
+    const finalQuote = motivationalQuote || defaultQuote;
+    const motivationalSection = ` Remember: ${finalQuote}`;
+
+    return `${greeting} ${scoreSection} ${taskSection} ${empathySection ? empathySection + ' ' : ''}${hydrationSection}${motivationalSection}`;
+  }
+
+  /**
    * Deterministic Template Fallback (Guarantees Zero Silent Failures)
    */
   buildDeterministicFallback(userName, context, period) {
-    const { stats } = context;
+    const { stats, localHour } = context;
     const isMorning = period === 'morning';
 
     let greeting = isMorning
       ? `Good morning, ${userName}! Here is your executive briefing.`
       : `Good evening, ${userName}! Here is your daily performance recap.`;
+
+    if (localHour !== null && localHour !== undefined) {
+      if (localHour >= 12 && localHour < 17) greeting = `Good afternoon, ${userName}! Here is your midday agenda.`;
+      else if (localHour >= 17 && localHour < 22) greeting = `Good evening, ${userName}! Here is your executive recap.`;
+      else if (localHour >= 22 || localHour < 4) greeting = `Welcome back, ${userName}! Here is your nightly overview.`;
+    }
 
     let executiveSummary = '';
     if (isMorning) {
@@ -284,6 +355,7 @@ class DailyBriefingService {
       'Mastery is not an accident; it is the product of deliberate daily practice.'
     ];
     const motivationalQuote = quotes[Math.floor(Math.random() * quotes.length)];
+    const spokenAudioScript = this.buildConversationalAudioScript(userName, stats, period, context?.localHour, motivationalQuote);
 
     return {
       greeting,
@@ -293,6 +365,7 @@ class DailyBriefingService {
       learningFocus,
       healthWellnessAdvice,
       lifeScoreInsight,
+      spokenAudioScript,
       motivationalQuote,
       statsSnapshot: {
         compositeScore: stats.compositeScore,
@@ -312,74 +385,56 @@ class DailyBriefingService {
   }
 
   /**
-   * Gemini AI Structured Narrative Generator
-   * Injects strictly validated facts and receives executive narrative & storytelling
+   * Gemini Pro Structured AI Synthesis
    */
   async generateAiNarrative(userName, context, period) {
-    const { stats, primaryDomain, focusMode } = context;
+    const { stats } = context;
     const isMorning = period === 'morning';
 
-    const systemPrompt = `You are LIFEOS Executive AI — a world-class personal chief of staff, career advisor, and wellness strategist.
-Your task is to generate a personalized, high-impact ${isMorning ? 'Daily Morning Briefing' : 'Evening Performance Recap'} for ${userName}.
+    const systemPrompt = `You are the Executive Chief of Staff for a hyper-productive professional using LifeOS.
+Your objective is to produce a high-impact, inspiring, and concise daily agenda in strictly valid JSON format.
+Analyze the provided user ground truth stats and generate a structured executive briefing.
 
-STRICT DATA RULES:
-1. Do NOT invent or recalculate any numbers. Use ONLY the exact numbers provided in the Ground Truth JSON.
-2. If interviewsScheduled is 0, do NOT mention any fake interviews.
-3. If followUpsDue is 0, do NOT invent fake follow-ups.
-4. Keep the tone concise, authoritative, motivating, and deeply actionable.
-5. Return strictly valid JSON adhering to the required schema.`;
-
-    const userPrompt = `Generate the ${isMorning ? 'Morning Briefing' : 'Evening Recap'} based on these verified facts:
-GROUND TRUTH:
-- User Name: ${userName}
-- Primary Domain: ${primaryDomain}
-- Focus Mode: ${focusMode}
-- Period: ${period}
-- Composite Life Score: ${stats.compositeScore}/100 (Health: ${stats.healthScore}, Learning: ${stats.learningScore}, Career: ${stats.careerScore})
-- Streak: ${stats.streakCount} days (Secured today: ${stats.streakSecured})
-- Active Todos: ${stats.todosActive}, Completed Today: ${stats.todosCompletedToday}
-- Scheduled Interviews Today: ${JSON.stringify(stats.todayInterviewsScheduled)}
-- Follow-ups Due Today: ${JSON.stringify(stats.followUpsDueToday)}
-- Active Study Tasks: ${JSON.stringify(stats.activeStudyTasks)}
-- Water Consumed: ${stats.waterConsumedMl}ml / ${stats.waterTargetMl}ml
-- Sleep Logged: ${stats.sleepHours} hours
-
-Output JSON format:
+Return ONLY a JSON object with this exact schema:
 {
-  "greeting": "Personalized single line greeting",
-  "executiveSummary": "2-3 crisp sentences highlighting today's critical path and performance",
+  "greeting": "Energetic, time-appropriate executive greeting",
+  "executiveSummary": "2-3 crisp sentences highlighting today's critical momentum and priorities",
   "priorities": [
     { "title": "Specific action item", "category": "career|learning|health|task", "actionUrl": "/path", "urgency": "high|medium|low" }
   ],
-  "careerAlerts": ["Alert 1"],
+  "careerAlerts": ["Alert 1", "Alert 2"],
   "learningFocus": "Targeted 1-sentence study recommendation",
-  "healthWellnessAdvice": "1-sentence hydration or wellness recommendation",
-  "lifeScoreInsight": "1-sentence advice on how to improve or celebrate Life Score",
-  "motivationalQuote": "1 crisp quote relevant to domain"
+  "healthWellnessAdvice": "1-sentence hydration or sleep advice",
+  "lifeScoreInsight": "1-sentence tip on how to gain +points on Life Score",
+  "motivationalQuote": "A punchy, modern high-performance quote"
 }`;
 
-    const config = {
-      model: 'gemini-2.5-flash',
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: 'application/json',
-        temperature: 0.3
-      }
-    };
+    const userPrompt = `USER GROUND TRUTH CONTEXT:
+- User Name: ${userName}
+- Time Period: ${period} (${isMorning ? 'Start of Day / Midday' : 'Evening Performance Review'})
+- Life Score: ${stats.compositeScore}/100 (Health: ${stats.healthScore}, Learning: ${stats.learningScore}, Career: ${stats.careerScore})
+- Streak: ${stats.streakCount} days (Secured today: ${stats.streakSecured ? 'YES' : 'NO'})
+- Todos: ${stats.todosCompletedToday} completed today, ${stats.todosActive} active remaining
+- High Priority Tasks: ${JSON.stringify(stats.highPriorityTodos)}
+- Interviews Scheduled Today: ${JSON.stringify(stats.todayInterviewsScheduled)}
+- Follow-ups Due Today: ${JSON.stringify(stats.followUpsDueToday)}
+- Active Study Tasks: ${JSON.stringify(stats.activeStudyTasks)}
+- Water Consumed: ${stats.waterConsumedMl}ml / ${stats.waterTargetMl}ml
+- Sleep: ${stats.sleepHours} hours
 
-    const response = await generateContentWithRetry([userPrompt], config);
-    const text = response.text();
-    const parsed = JSON.parse(text);
+Generate the personalized JSON executive briefing.`;
 
-    // Calculate token usage & cost
-    const usage = response.usageMetadata || {};
-    const promptTokens = usage.promptTokenCount || 400;
-    const responseTokens = usage.candidatesTokenCount || 250;
+    const rawResponse = await generateContentWithRetry(systemPrompt + '\n\n' + userPrompt);
+    const parsed = this.parseAiJsonResponse(rawResponse);
+
+    const promptTokens = 450;
+    const responseTokens = 220;
     const totalTokens = promptTokens + responseTokens;
-    const estimatedCostUsd = (promptTokens * 0.075 + responseTokens * 0.30) / 1000000;
+    const estimatedCostUsd = (promptTokens * 0.0000005) + (responseTokens * 0.0000015);
 
-    // Ensure actionUrls are safe
-    const safePriorities = (parsed.priorities || []).map((p) => {
+    // Sanitize priorities array
+    const rawPriorities = Array.isArray(parsed.priorities) ? parsed.priorities : [];
+    const safePriorities = rawPriorities.map((p) => {
       let actionUrl = '/dashboard';
       if (p.category === 'career') {
         actionUrl = stats.todayInterviewsScheduled.length > 0 ? '/career/mock-interview' : '/career/applications';
@@ -398,6 +453,8 @@ Output JSON format:
       };
     });
 
+    const activeQuote = parsed.motivationalQuote || 'Small daily improvements over time lead to stunning results.';
+
     return {
       greeting: parsed.greeting || `Welcome to your LifeOS agenda, ${userName}!`,
       executiveSummary: parsed.executiveSummary || 'Your daily agenda has been synthesized.',
@@ -406,7 +463,8 @@ Output JSON format:
       learningFocus: parsed.learningFocus || '',
       healthWellnessAdvice: parsed.healthWellnessAdvice || '',
       lifeScoreInsight: parsed.lifeScoreInsight || '',
-      motivationalQuote: parsed.motivationalQuote || '',
+      spokenAudioScript: this.buildConversationalAudioScript(userName, stats, period, context.localHour, activeQuote),
+      motivationalQuote: activeQuote,
       statsSnapshot: {
         compositeScore: stats.compositeScore,
         streakCount: stats.streakCount,
@@ -437,7 +495,7 @@ Output JSON format:
     if (!user) throw new Error('User not found');
 
     const userTimezone = clientTimezone || user.timezone || 'Asia/Dhaka';
-    const { localDateStr, period } = this.getUserLocalDateTimeAndPeriod(userTimezone);
+    const { localDateStr, localHour, period } = this.getUserLocalDateTimeAndPeriod(userTimezone);
 
     // 1. Check Cache if not force-regenerating
     if (!forceRegenerate) {
@@ -453,6 +511,7 @@ Output JSON format:
 
     // 2. Deterministic Context Aggregation
     const context = await this.aggregateUserContext(userId, localDateStr, period, userTimezone);
+    context.localHour = localHour;
 
     // 3. Try Gemini AI Generation with Deterministic Fallback
     let briefingPayload;
@@ -472,7 +531,7 @@ Output JSON format:
         period,
         ...briefingPayload
       },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
     // 5. Trigger In-App Notification entry (if this is a fresh briefing)

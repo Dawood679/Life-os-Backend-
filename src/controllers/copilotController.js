@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 const { ai } = require('../config/gemini');
 const callGroq = require('../config/groq');
+const User = require('../models/User');
 const CopilotAuditLog = require('../models/CopilotAuditLog');
 const Todo = require('../models/Todo');
 const WellnessLog = require('../models/WellnessLog');
@@ -107,9 +108,15 @@ AVAILABLE TOOLS:
 14. "general_qa": { "answer": string } (For conversational advice, interview prep, proactive coaching)
 
 RULES:
-- Always respond in valid JSON format only.
-- Format: { "tool": string, "args": object, "reply": string }
-- When user asks for learning or interview guidance, reference their upcoming interviews and polish topics empathetically without sounding blunt.
+- Always respond in valid JSON format only: { "tool": string, "args": object, "reply": string }
+- TOOL ROUTING RULES:
+  * When user asks to log water (e.g., "log 250ml water", "drank 500ml"), you MUST output "tool": "log_water" with "amountMl".
+  * When user asks to add or schedule a task (e.g., "add task X", "schedule meeting at 9pm"), you MUST output "tool": "create_task".
+  * When user asks to delete or remove a task (e.g., "delete task X", "remove X from todo"), you MUST output "tool": "delete_task" with "taskTitleKeyword". LifeOS has a built-in Two-Phase Commit safety system that confirms before deleting. Never refuse to delete.
+  * When user asks to update or add a notification to an existing task, you MUST output "tool": "update_task".
+  * When user asks what's on their schedule or agenda today, you MUST output "tool": "query_agenda".
+  * When user asks for their Life Score, you MUST output "tool": "query_score".
+  * When user feels exhausted or burnt out, you MUST output "tool": "reschedule_burnout".
 - "reply" must be concise, encouraging, and action-oriented.`;
 
   let aiParsed = null;
@@ -199,7 +206,57 @@ RULES:
       });
     }
 
-    return executeLogWater(userId, todayDate, amount, providerUsed, rawCommand, res, userReply);
+    const user = await User.findById(userId);
+    const targetMl = user?.waterSettings?.targetMl || 2000;
+
+    const existingLog = await WellnessLog.findOne({ user: userId, date: todayDate });
+    const currentConsumed = existingLog?.water?.consumedMl || 0;
+
+    if (currentConsumed >= targetMl) {
+      return res.json({
+        success: true,
+        provider: providerUsed,
+        reply: `You have already achieved your daily hydration target of ${targetMl}ml! Awesome job staying hydrated today 💧🎉`,
+        totalWaterMl: currentConsumed
+      });
+    }
+
+    const actualAmount = Math.min(amount, targetMl - currentConsumed);
+
+    const updatedWellness = await WellnessLog.findOneAndUpdate(
+      { user: userId, date: todayDate },
+      {
+        $inc: { 'water.consumedMl': actualAmount },
+        $push: { 'water.entries': { amountMl: actualAmount, loggedAt: new Date() } }
+      },
+      { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
+    );
+
+    const updatedScore = await lifeScoreService.calculateDailyScore(userId, todayDate);
+    memoryService.clearUserMemoryCache(userId);
+
+    await CopilotAuditLog.create({
+      user: userId,
+      command: rawCommand,
+      intent: 'log_water',
+      detectedTool: 'log_water',
+      sanitizedArgs: { amountMl: actualAmount },
+      status: 'EXECUTED',
+      aiProvider: providerUsed,
+      actionResponse: userReply
+    });
+
+    const isNowTargetMet = (updatedWellness?.water?.consumedMl || 0) >= targetMl;
+
+    return res.json({
+      success: true,
+      provider: providerUsed,
+      reply: isNowTargetMet
+        ? `Logged ${actualAmount}ml water! You have now reached your 100% daily goal of ${targetMl}ml 💧🎉`
+        : userReply || `Logged ${actualAmount}ml water! Total: ${updatedWellness?.water?.consumedMl || actualAmount}ml / ${targetMl}ml 💧`,
+      totalWaterMl: updatedWellness?.water?.consumedMl || actualAmount,
+      lifeScore: updatedScore
+    });
   }
 
   // TOOL 2: Log Sleep
@@ -437,12 +494,60 @@ RULES:
 
   // TOOL 5: Query Agenda
   if (tool === 'query_agenda') {
-    return executeQueryAgenda(userId, todayDate, providerUsed, rawCommand, res, userReply);
+    const todayTodos = await Todo.find({
+      user: userId,
+      dueDate: {
+        $gte: new Date(new Date().setHours(0, 0, 0, 0)),
+        $lte: new Date(new Date().setHours(23, 59, 59, 999))
+      }
+    }).sort({ dueDate: 1 });
+
+    const pending = todayTodos.filter(t => !t.isCompleted);
+    const completed = todayTodos.filter(t => t.isCompleted);
+
+    const agendaSummary = pending.length === 0
+      ? `You have completed all ${completed.length} tasks scheduled for today! Superb momentum 🚀`
+      : `You have ${pending.length} priority tasks pending today:\n${pending.map((t, idx) => `${idx + 1}. "${t.title}" (${t.priority})`).join('\n')}`;
+
+    await CopilotAuditLog.create({
+      user: userId,
+      command: rawCommand,
+      intent: 'query_agenda',
+      detectedTool: 'query_agenda',
+      status: 'EXECUTED',
+      aiProvider: providerUsed,
+      actionResponse: agendaSummary
+    });
+
+    return res.json({
+      success: true,
+      provider: providerUsed,
+      reply: userReply || agendaSummary,
+      agenda: { total: todayTodos.length, pending: pending.length, completed: completed.length, tasks: todayTodos }
+    });
   }
 
   // TOOL 6: Query Life Score
   if (tool === 'query_score') {
-    return executeQueryLifeScore(userId, todayDate, providerUsed, rawCommand, res, userReply);
+    const currentScore = await lifeScoreService.calculateDailyScore(userId, todayDate);
+    const scoreSummary = `Your Life Score today is ${currentScore?.totalScore || 0}/100 (Health: ${currentScore?.healthScore || 0}, Learning: ${currentScore?.learningScore || 0}, Career: ${currentScore?.careerScore || 0}) 🔥`;
+
+    await CopilotAuditLog.create({
+      user: userId,
+      command: rawCommand,
+      intent: 'query_score',
+      detectedTool: 'query_score',
+      status: 'EXECUTED',
+      aiProvider: providerUsed,
+      actionResponse: scoreSummary
+    });
+
+    return res.json({
+      success: true,
+      provider: providerUsed,
+      reply: userReply || scoreSummary,
+      lifeScore: currentScore
+    });
   }
 
   // TOOL 6: Reschedule Burnout
