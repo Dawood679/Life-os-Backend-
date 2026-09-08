@@ -8,6 +8,10 @@ const { notesSummarizerResponseSchema } = require('../models/NotesSummarizer');
 const { jobMatchResponseSchema } = require('../models/JobMatch');
 const { resumeAnalysisResponseSchema } = require('../models/ResumeAnalysis');
 const { weeklyReportResponseSchema } = require('../models/WellnessLog');
+const {
+  interviewQuestionResponseSchema,
+  interviewScorecardResponseSchema
+} = require('../models/InterviewSession');
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -343,8 +347,95 @@ const weeklyReportConfig = {
   }
 };
 
+const interviewQuestionConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Hiring Specialist & Senior Interviewer.
+Your role is to conduct an authentic, progressive mock interview for the candidate's target role.
+
+RULES FOR QUESTION GENERATION:
+1. Ask ONE clear, focused, and realistic question tailored to the specified role, level, and round type.
+2. If the user answered a previous question, provide a warm 1-sentence acknowledgement before transitioning into the next question or probing a key gap.
+3. Keep the tone professional, encouraging, and authentic.
+4. Distribute question categories across Technical, Behavioral, System/Process Design, and Situational problem solving.
+5. Strictly output JSON matching the provided schema.`,
+    responseMimeType: 'application/json',
+    responseSchema: interviewQuestionResponseSchema,
+    temperature: 0.5
+  }
+};
+
+const interviewScorecardConfig = {
+  model: 'gemini-2.5-flash',
+  config: {
+    systemInstruction: `You are LIFEOS AI Principal Talent Assessment & Career Evaluation Engine.
+Your job is to provide a comprehensive, objective diagnostic scorecard for a completed mock interview.
+
+EVALUATION RULES:
+1. Objectively grade the candidate's answers across Technical Accuracy, Communication Clarity, and Critical Thinking (0-100).
+2. Determine a realistic readiness verdict ('Strong Hire', 'Hire with Reservations', 'Needs Preparation', 'Not Ready').
+3. For EVERY question answered:
+   - Provide a concise diagnostic feedback summary (feedbackBrief).
+   - Provide a bullet-point ideal model answer (idealAnswerBullet) demonstrating how a top candidate would answer.
+    - Assign an individual question score (0-100).
+4. Identify 2 to 4 concrete, actionable Weakness Topics (weakTopics) that the candidate must review, mapping each to a clear canonical skill (e.g. 'React.js', 'System Design', 'Behavioral STAR Method').
+5. Output valid JSON strictly conforming to the response schema.`,
+    responseMimeType: 'application/json',
+    responseSchema: interviewScorecardResponseSchema,
+    temperature: 0.3
+  }
+};
+
+/**
+ * Resilient Gemini Content Generation with Automatic Retry and Fallback Models
+ */
+const generateContentWithRetry = async ({ model = 'gemini-2.5-flash', contents, config }, maxRetries = 2) => {
+  const fallbackModels = [model, 'gemini-2.5-flash', 'gemini-2.0-flash'];
+  const uniqueModels = [...new Set(fallbackModels)];
+
+  let lastError = null;
+
+  for (const currentModel of uniqueModels) {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model: currentModel,
+          contents,
+          config
+        });
+        return response;
+      } catch (err) {
+        lastError = err;
+        const errMsg = String(err?.message || '').toLowerCase();
+        const status = err?.status || err?.code || (err?.error && err.error.code);
+        const isRetryable =
+          status === 503 ||
+          status === 429 ||
+          status === 500 ||
+          errMsg.includes('high demand') ||
+          errMsg.includes('unavailable') ||
+          errMsg.includes('resource_exhausted');
+
+        if (isRetryable && attempt < maxRetries) {
+          const delayMs = attempt * 1200;
+          console.warn(`[AI Engine Retry] ${currentModel} (Attempt ${attempt}) failed with 503/Spike. Retrying in ${delayMs}ms...`);
+          await new Promise((r) => setTimeout(r, delayMs));
+        } else if (isRetryable) {
+          console.warn(`[AI Engine Fallback] ${currentModel} exhausted. Trying next fallback model...`);
+          break; // Try next fallback model
+        } else {
+          throw err; // Non-retryable (e.g., auth or schema error)
+        }
+      }
+    }
+  }
+
+  throw lastError || new Error('All AI model attempts exhausted due to temporary provider demand.');
+};
+
 module.exports = {
   ai,
+  generateContentWithRetry,
   roadmapConfig,
   studyPlanConfig,
   quizConfig,
@@ -357,5 +448,7 @@ module.exports = {
   jobMatchConfig,
   resumeAnalysisConfig,
   weeklyReportConfig,
-  onboardingConfig
+  onboardingConfig,
+  interviewQuestionConfig,
+  interviewScorecardConfig
 };
