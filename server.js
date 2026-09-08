@@ -43,6 +43,8 @@ app.use('/api/job-match', require('./src/routes/jobMatchRoutes'));
 app.use('/api/resume', require('./src/routes/resumeRoutes'));
 app.use('/api/wellness', require('./src/routes/wellnessRoutes'));
 app.use('/api/health', require('./src/routes/healthRoutes'));
+app.use('/api/life-score', require('./src/routes/lifeScoreRoutes'));
+app.use('/api/onboarding', require('./src/routes/onboardingRoutes'));
 
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 

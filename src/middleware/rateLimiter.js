@@ -24,10 +24,10 @@ const otpLimiter = rateLimit({
   legacyHeaders: false
 });
 
-// post,patch,delete-15 req per 10 mins
+// post,patch,delete operations
 const writeLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
-  max: 15,
+  max: 120,
   skip: (req) => req.method === 'GET',
   message: {
     success: false,

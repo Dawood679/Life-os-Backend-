@@ -1,6 +1,8 @@
 const Quiz = require("../models/Quiz");
 const { ai, quizConfig } = require("../config/gemini");
 const { callAIWithFallback } = require("../utils/aiWithFallback");
+const skillService = require("../services/skillService");
+const lifeScoreService = require("../services/lifeScoreService");
 
 const generateQuiz = async (req, res) => {
   try {
@@ -128,6 +130,27 @@ const submitQuiz = async (req, res) => {
 
     await quiz.save();
 
+    // Step 1: Cross-module Skill Verification & Life Score Trigger
+    if (percentage >= 75) {
+      try {
+        await skillService.addVerifiedSkill(req.user._id, {
+          skill: quiz.topic,
+          category: 'learning',
+          score: percentage,
+          source: 'quiz'
+        });
+      } catch (skillErr) {
+        console.error('Skill verification warning:', skillErr);
+      }
+    }
+
+    // Recalculate daily Life Score
+    try {
+      await lifeScoreService.calculateDailyScore(req.user._id);
+    } catch (scoreErr) {
+      console.error('Life score update warning:', scoreErr);
+    }
+
     return res.status(200).json({
       success: true,
       message: "Quiz submitted successfully",
@@ -137,6 +160,7 @@ const submitQuiz = async (req, res) => {
         percentage,
         isSubmitted: quiz.isSubmitted,
         submittedAt: quiz.submittedAt,
+        verifiedSkillAwarded: percentage >= 75
       },
     });
   } catch (error) {
