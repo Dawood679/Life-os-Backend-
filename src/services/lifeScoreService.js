@@ -6,6 +6,7 @@ const Todo = require('../models/Todo');
 const StudyPlan = require('../models/StudyPlan');
 const { ProjectGenerator } = require('../models/ProjectGenerator');
 const { InterviewSession } = require('../models/InterviewSession');
+const JobApplication = require('../models/JobApplication');
 
 /**
  * Standard Focus Mode Weight Configurations
@@ -227,14 +228,21 @@ class LifeScoreService {
     const finalLearningScore = Math.min(100, Math.max(0, Math.round(learningComponentScore)));
 
     // 3. Fetch Career / Action Metrics (Todos + Action Plan Milestones completed TODAY)
-    // 3. Fetch Career / Action Metrics (Todos + Action Plan Milestones + Mock Interviews completed TODAY)
-    const [userTodos, userProjects, todayInterviews] = await Promise.all([
+    // 3. Fetch Career / Action Metrics (Todos + Action Milestones + Mock Interviews + Job Applications)
+    const [userTodos, userProjects, todayInterviews, todayJobApps] = await Promise.all([
       Todo.find({ user: userId }),
       ProjectGenerator.find({ user: userId }),
       InterviewSession.find({
         user: userId,
         status: 'completed',
         completedAt: { $gte: startOfDay, $lte: endOfDay }
+      }),
+      JobApplication.find({
+        user: userId,
+        $or: [
+          { appliedDate: { $gte: startOfDay, $lte: endOfDay } },
+          { updatedAt: { $gte: startOfDay, $lte: endOfDay } }
+        ]
       })
     ]);
 
@@ -279,8 +287,31 @@ class LifeScoreService {
       }
     });
 
-    // Daily Career Velocity: Target = 2 action units (1 Mock Interview = 1.5-2 units, 1 Milestone = 1.5 units, 1 Todo = 1 unit)
-    const earnedCareerActionUnits = (actionMilestonesCompletedToday * 1.5) + (todosCompletedToday * 1.0) + interviewActionUnits;
+    let jobApplicationsSubmittedToday = 0;
+    let jobInterviewPromotionsToday = 0;
+    todayJobApps.forEach(app => {
+      if (app.status !== 'wishlist') {
+        const appDate = app.appliedDate ? new Date(app.appliedDate) : new Date(app.createdAt);
+        if (appDate >= startOfDay && appDate <= endOfDay) {
+          jobApplicationsSubmittedToday++;
+        }
+      }
+      if (app.status === 'interviewing' || app.status === 'offer') {
+        const updateDate = new Date(app.updatedAt);
+        if (updateDate >= startOfDay && updateDate <= endOfDay) {
+          jobInterviewPromotionsToday++;
+        }
+      }
+    });
+
+    // Daily Career Velocity: Target = 2 action units
+    // (1 Mock Interview = 1.5-2 units, 1 Milestone = 1.5 units, 1 Todo = 1 unit, 1 Job Application = 1 unit, 1 Interview Promotion = 1.5 units)
+    const earnedCareerActionUnits =
+      (actionMilestonesCompletedToday * 1.5) +
+      (todosCompletedToday * 1.0) +
+      interviewActionUnits +
+      (jobApplicationsSubmittedToday * 1.0) +
+      (jobInterviewPromotionsToday * 1.5);
 
     let careerComponentScore = 0;
     if (earnedCareerActionUnits >= 2.0) {
@@ -290,7 +321,7 @@ class LifeScoreService {
     } else if (earnedCareerActionUnits > 0) {
       careerComponentScore = Math.round(earnedCareerActionUnits * 65);
     } else {
-      careerComponentScore = 0; // Pure 0 start until user completes action milestone/todo today
+      careerComponentScore = 0; // Pure 0 start until user completes action milestone/todo/interview/job application today
     }
     const finalCareerScore = Math.min(100, Math.max(0, Math.round(careerComponentScore)));
 
@@ -318,7 +349,8 @@ class LifeScoreService {
       todosTotal: todosTotal,
       actionMilestonesCompleted: actionMilestonesCompletedToday,
       actionMilestonesTotal: actionMilestonesTotal,
-      interviewsCompleted: interviewsCompletedToday
+      interviewsCompleted: interviewsCompletedToday,
+      jobApplicationsSubmitted: jobApplicationsSubmittedToday
     };
 
     // Calculate action suggestions
@@ -383,6 +415,13 @@ class LifeScoreService {
       deltas,
       logId: scoreLog._id
     };
+  }
+
+  /**
+   * Alias for calculateDailyScore
+   */
+  async recalculateDailyScore(userId, targetDate = null) {
+    return this.calculateDailyScore(userId, targetDate);
   }
 
   /**

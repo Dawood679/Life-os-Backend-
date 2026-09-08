@@ -46,6 +46,8 @@ app.use('/api/health', require('./src/routes/healthRoutes'));
 app.use('/api/life-score', require('./src/routes/lifeScoreRoutes'));
 app.use('/api/onboarding', require('./src/routes/onboardingRoutes'));
 app.use('/api/interview', require('./src/routes/interviewRoutes'));
+app.use('/api/job-applications', require('./src/routes/jobApplicationRoutes'));
+app.use('/api/daily-briefing', require('./src/routes/dailyBriefingRoutes'));
 
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 
