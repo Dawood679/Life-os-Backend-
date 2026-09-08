@@ -59,8 +59,11 @@ const lifeScoreLogSchema = new mongoose.Schema(
       quizzesCompleted: { type: Number, default: 0 },
       quizAvgPercentage: { type: Number, default: 0 },
       studyTasksCompleted: { type: Number, default: 0 },
+      studyTasksTotal: { type: Number, default: 0 },
       todosCompleted: { type: Number, default: 0 },
-      todosTotal: { type: Number, default: 0 }
+      todosTotal: { type: Number, default: 0 },
+      actionMilestonesCompleted: { type: Number, default: 0 },
+      actionMilestonesTotal: { type: Number, default: 0 }
     },
     insights: [{ type: String }]
   },

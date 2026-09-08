@@ -113,7 +113,10 @@ const updateTodo = async (req, res) => {
     if (description !== undefined) updateFields.description = description;
     if (priority !== undefined) updateFields.priority = priority;
     if (dueDate !== undefined) updateFields.dueDate = dueDate;
-    if (isCompleted !== undefined) updateFields.isCompleted = isCompleted;
+    if (isCompleted !== undefined) {
+      updateFields.isCompleted = isCompleted;
+      updateFields.completedAt = isCompleted ? new Date() : null;
+    }
 
    if (
       dueDate &&

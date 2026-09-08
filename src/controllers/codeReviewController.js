@@ -63,21 +63,6 @@ const reviewCode = async (req, res) => {
       rawResponse: response.text,
     });
 
-    // Cross-module skill verification trigger if high score
-    if (parsedReview.overallScore >= 80) {
-      try {
-        const skillName = parsedReview.domain === 'code' ? 'Code Quality' : `${parsedReview.domain} writing`;
-        await skillService.addVerifiedSkill(req.user._id, {
-          skill: skillName,
-          category: parsedReview.domain || 'general',
-          score: parsedReview.overallScore,
-          source: 'work_review'
-        });
-      } catch (skillErr) {
-        console.error('Skill verification error:', skillErr);
-      }
-    }
-
     // Recalculate daily Life Score
     try {
       await lifeScoreService.calculateDailyScore(req.user._id);

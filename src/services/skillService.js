@@ -6,13 +6,18 @@ const User = require('../models/User');
  */
 class SkillService {
   /**
-   * Add or upgrade a verified skill for a user
+   * Add or upgrade a verified skill for a user (Strictly from quiz assessments)
    * @param {string} userId
    * @param {Object} skillData - { skill, category, score, source }
    */
-  async addVerifiedSkill(userId, { skill, category = 'general', score = 100, source = 'quiz' }) {
+  async addVerifiedSkill(userId, { skill, category = 'learning', score = 100, source = 'quiz' }) {
     if (!userId || !skill) {
       throw new Error('User ID and skill name are required');
+    }
+
+    // Only allow verified badges issued through official quiz assessments
+    if (source !== 'quiz') {
+      return [];
     }
 
     const trimmedSkill = skill.trim();
@@ -34,30 +39,31 @@ class SkillService {
       if (score >= (user.verifiedSkills[existingIndex].score || 0)) {
         user.verifiedSkills[existingIndex].score = score;
         user.verifiedSkills[existingIndex].verifiedAt = new Date();
-        user.verifiedSkills[existingIndex].source = source;
+        user.verifiedSkills[existingIndex].source = 'quiz';
         if (category) user.verifiedSkills[existingIndex].category = category;
       }
     } else {
       user.verifiedSkills.push({
         skill: trimmedSkill,
-        category: category || 'general',
+        category: category || 'learning',
         score: Math.min(100, Math.max(0, score)),
-        source: source || 'quiz',
+        source: 'quiz',
         verifiedAt: new Date()
       });
     }
 
     await user.save();
-    return user.verifiedSkills;
+    return user.verifiedSkills.filter(s => !s.source || s.source === 'quiz');
   }
 
   /**
-   * Retrieve all verified skills for a user
+   * Retrieve all quiz-verified skills for a user
    * @param {string} userId
    */
   async getVerifiedSkills(userId) {
     const user = await User.findById(userId).select('verifiedSkills');
-    return user ? user.verifiedSkills : [];
+    if (!user || !user.verifiedSkills) return [];
+    return user.verifiedSkills.filter(s => !s.source || s.source === 'quiz');
   }
 }
 

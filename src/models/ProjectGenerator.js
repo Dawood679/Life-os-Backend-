@@ -7,7 +7,8 @@ const milestoneSchema = new mongoose.Schema({
   description: { type: String },
   deliverable: { type: String },
   checklist: [{ type: String }],
-  isCompleted: { type: Boolean, default: false }
+  isCompleted: { type: Boolean, default: false },
+  completedAt: { type: Date }
 });
 
 const legacyFolderItemSchema = new mongoose.Schema({
