@@ -15,7 +15,11 @@ const {
   getHealthInsights,
   getWeeklyHealthNarrative,
   deleteMedicine,
-  deletePrescription
+  deletePrescription,
+  deleteAppointment,
+  deleteDoctorAdvice,
+  getHealthProfile,
+  updateMedicine
 } = require('../controllers/healthController');
 
 const { protect } = require('../middleware/auth');
@@ -27,6 +31,7 @@ router.route('/medicines')
   .post(protect, addMedicine);
 
 router.patch('/medicines/:id/adherence', protect, updateMedicineAdherence);
+router.patch('/medicines/:id', protect, updateMedicine);
 
 // appointment routes
 router.route('/appointments')
@@ -40,6 +45,7 @@ router.route('/advice')
 
 // medical history timeline
 router.get('/history', protect, getMedicalHistoryTimeline);
+router.get('/profile', protect, getHealthProfile);
 
 // prescription scanner & confirmation routes
 router.post('/prescriptions/scan', protect, upload.single('prescription'), scanPrescription);
@@ -52,5 +58,7 @@ router.get('/weekly-report', protect, getWeeklyHealthNarrative);
 
 router.delete('/medicines/:id', protect, deleteMedicine);
 router.delete('/prescriptions/:id', protect, deletePrescription);
+router.delete('/appointments/:id', protect, deleteAppointment);
+router.delete('/advice/:id', protect, deleteDoctorAdvice);
 
 module.exports = router;
