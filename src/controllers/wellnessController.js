@@ -217,7 +217,8 @@ const updateWaterSettings = async (req, res) => {
 };
 
 // GET /api/wellness/logs/:date
-const getLogByDate = async (req, res) => {
+const getLogByDate = async (req, res) => {￼Mark as resolved 
+3 confli
   try {
     const { date } = req.params;
 
