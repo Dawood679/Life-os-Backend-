@@ -1,36 +1,35 @@
 const express = require("express");
 const router = express.Router();
+
 const {
-  logWater,
-  logScreenTime,
-  getCheckIn,
-  getHistory,
-  updateGoals,
-  deleteEntry,
-  updateReminderSettings,
-  getNotifications,
-  markNotificationRead,
-  getSettings,
+  updateWaterSettings,
+  getLogByDate,
+  getLogsInRange,
+  addWaterEntry,
+  updateScreenTime,
+  updateSleep,
+  updateMood,
+  updateActivity,
+  getWaterSettings,
+  generateWeeklyReport,
 } = require("../controllers/wellnessController");
+
 const { protect } = require("../middleware/auth");
 
-// check in
-router.post("/water", protect, logWater);
-router.post("/screen-time", protect, logScreenTime);
-router.get("/today", protect, getCheckIn); // ?date=YYYY-MM-DD optional
-router.get("/history", protect, getHistory); // ?days=7 (default), max 90
-router.delete("/:type/:entryId", protect, deleteEntry); // :type = water | screen-time, ?date=YYYY-MM-DD
+// User settings & config
+router.get("/water-settings", protect, getWaterSettings);
+router.post("/water-settings", protect, updateWaterSettings);
 
-// goals
-router.put("/goals", protect, updateGoals);
+// AI Weekly Report
+router.get("/weekly-report", protect, generateWeeklyReport);
 
-// reminder
-router.put("/reminder", protect, updateReminderSettings);
-router.put("/settings", protect, updateReminderSettings);
-router.get("/settings", protect, getSettings);
-
-// notification
-router.get("/notifications", protect, getNotifications);
-router.put("/notifications/:id/read", protect, markNotificationRead);
+// Wellness log actions
+router.get("/logs", protect, getLogsInRange);
+router.get("/logs/:date", protect, getLogByDate);
+router.post("/water", protect, addWaterEntry);
+router.patch("/screen-time", protect, updateScreenTime);
+router.patch("/sleep", protect, updateSleep);
+router.patch("/mood", protect, updateMood);
+router.patch("/activity", protect, updateActivity);
 
 module.exports = router;
