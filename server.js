@@ -51,6 +51,7 @@ app.use('/api/daily-briefing', require('./src/routes/dailyBriefingRoutes'));
 app.use('/api/rescheduler', require('./src/routes/reschedulerRoutes'));
 
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
+app.use('/api/copilot', require('./src/routes/copilotRoutes'));
 
 
 app.get("/", (req, res) => {

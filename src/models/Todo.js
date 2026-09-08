@@ -26,6 +26,27 @@ const todoSchema = new mongoose.Schema(
       default: Date.now,
       required: [true, 'Date and time is required']
     },
+    repeat: {
+      type: String,
+      enum: ['none', 'daily', 'weekdays', 'weekly', 'monthly', 'custom'],
+      default: 'none'
+    },
+    customDays: {
+      type: [Number], // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+      default: []
+    },
+    notificationChannel: {
+      type: String,
+      enum: ['in_app', 'email', 'both', 'none'],
+      default: 'in_app'
+    },
+    reminderMinutesBefore: {
+      type: Number,
+      default: 10
+    },
+    reminderTime: {
+      type: Date
+    },
     isCompleted: {
       type: Boolean,
       default: false

@@ -27,7 +27,7 @@ async function callGroq(prompt, systemInstruction = '', messagesHistory = [], fo
 
     const payload = {
       messages: messages,
-      model: 'llama-3.3-70b-specdec', // Updated to valid model
+      model: 'qwen/qwen3.8-27b',
     };
 
     if (forceJson) {

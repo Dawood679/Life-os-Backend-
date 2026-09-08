@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   generateProject,
   toggleMilestone,
+  bridgeMilestoneToTodo,
   getProjects,
   getProject,
   deleteProject
@@ -11,6 +12,7 @@ const { protect } = require('../middleware/auth');
 
 router.post('/generate', protect, generateProject);
 router.patch('/:id/milestone/:stepNumber', protect, toggleMilestone);
+router.post('/:id/milestone/:stepNumber/bridge-todo', protect, bridgeMilestoneToTodo);
 router.get('/', protect, getProjects);
 router.get('/:id', protect, getProject);
 router.delete('/:id', protect, deleteProject);
