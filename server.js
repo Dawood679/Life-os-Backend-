@@ -54,6 +54,7 @@ app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 app.use('/api/copilot', require('./src/routes/copilotRoutes'));
 app.use('/api/weekly-report', require('./src/routes/weeklyReportRoutes'));
 app.use('/api/finance', require('./src/routes/financeRoutes'));
+app.use('/api/system', require('./src/routes/systemRoutes'));
 
 
 app.get("/", (req, res) => {

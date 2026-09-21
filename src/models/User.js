@@ -141,6 +141,14 @@ const userSchema = new mongoose.Schema(
       current: { type: Number, default: 0 },
       longest: { type: Number, default: 0 },
       lastActiveDate: { type: String, default: '' } // 'YYYY-MM-DD'
+    },
+    isSuspended: {
+      type: Boolean,
+      default: false
+    },
+    suspendedReason: {
+      type: String,
+      default: ''
     }
   },
   {

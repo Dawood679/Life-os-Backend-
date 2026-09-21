@@ -402,6 +402,15 @@ class LifeScoreService {
       }
     }
 
+    const todayFormatted = this.getFormattedDate();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayFormatted = this.getFormattedDate(yesterday);
+
+    const lastActive = user.streak?.lastActiveDate;
+    const isStreakActive = lastActive === todayFormatted || lastActive === yesterdayFormatted;
+    const effectiveCurrent = isStreakActive ? (user.streak?.current || 0) : 0;
+
     return {
       date: dateStr,
       totalScore,
@@ -411,7 +420,11 @@ class LifeScoreService {
       focusMode,
       weights,
       breakdown,
-      streak: user.streak || { current: 0, longest: 0 },
+      streak: {
+        current: effectiveCurrent,
+        longest: user.streak?.longest || 0,
+        lastActiveDate: user.streak?.lastActiveDate || ''
+      },
       deltas,
       logId: scoreLog._id
     };
