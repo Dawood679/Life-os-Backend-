@@ -149,6 +149,34 @@ const userSchema = new mongoose.Schema(
     suspendedReason: {
       type: String,
       default: ''
+    },
+    subscription: {
+      plan: {
+        type: String,
+        enum: ['free', 'starter', 'pro', 'lifetime'],
+        default: 'free'
+      },
+      billingCycle: {
+        type: String,
+        enum: ['monthly', 'yearly', 'lifetime', 'none'],
+        default: 'none'
+      },
+      status: {
+        type: String,
+        enum: ['active', 'inactive', 'canceled', 'trialing'],
+        default: 'inactive'
+      },
+      stripeCustomerId: {
+        type: String,
+        default: ''
+      },
+      stripeSubscriptionId: {
+        type: String,
+        default: ''
+      },
+      currentPeriodEnd: {
+        type: Date
+      }
     }
   },
   {

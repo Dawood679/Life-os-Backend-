@@ -11,6 +11,7 @@ const {
   resetPassword,
   verifyLoginOTP,
   verifyForgotOTP,
+  googleLogin,
 } = require("../controllers/authController");
 const { protect } = require("../middleware/auth");
 const { authLimiter, otpLimiter } = require('../middleware/rateLimiter');
@@ -40,6 +41,7 @@ const loginValidation = [
 // Public routes
 router.post("/register", registerValidation, authLimiter, register);
 router.post("/login", loginValidation,authLimiter, login);
+router.post("/google", authLimiter, googleLogin);
 router.get("/verify-email/:token", verifyEmail);
 router.post("/verify-login-otp", otpLimiter, verifyLoginOTP);
 router.post("/logout", logout);
