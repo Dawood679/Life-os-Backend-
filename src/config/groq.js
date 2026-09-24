@@ -28,7 +28,7 @@ async function callGroq(prompt, systemInstruction = '', messagesHistory = [], fo
     const payload = {
       messages: messages,
       model: 'openai/gpt-oss-120b',
-      max_tokens: 800,
+      max_tokens: 4096,
     };
 
     if (forceJson) {

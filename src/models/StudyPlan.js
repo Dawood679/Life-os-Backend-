@@ -15,7 +15,7 @@ const studyTaskSchema = new mongoose.Schema(
   {
     taskNumber: { type: Number, required: true },
     title: { type: String, required: true },
-    description: { type: String, required: true },
+    description: { type: String, default: '' },
     tier: {
       type: String,
       enum: ['quick_concept', 'core_mechanism', 'hands_on_exercise'],

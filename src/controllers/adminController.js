@@ -18,6 +18,7 @@ const AiUsageLog = require('../models/AiUsageLog');
 const SystemSetting = require('../models/SystemSetting');
 const AdminAuditLog = require('../models/AdminAuditLog');
 const BroadcastAnnouncement = require('../models/BroadcastAnnouncement');
+const Payment = require('../models/Payment');
 
 /**
  * Non-blocking helper to record security audit logs
@@ -1197,6 +1198,95 @@ const getAdminAuditLogs = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/admin/payments
+ * Retrieve all payment transactions with filters, search, pagination, and KPI summary
+ */
+const getAdminPayments = async (req, res) => {
+  try {
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 15));
+    const skip = (page - 1) * limit;
+
+    const { search, plan, status, billingCycle } = req.query;
+
+    const query = {};
+
+    if (search && search.trim()) {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { userName: searchRegex },
+        { userEmail: searchRegex },
+        { stripeSessionId: searchRegex }
+      ];
+    }
+
+    if (plan && plan !== 'all') {
+      query.plan = plan;
+    }
+
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    if (billingCycle && billingCycle !== 'all') {
+      query.billingCycle = billingCycle;
+    }
+
+    const [totalCount, payments, allSucceededPayments, totalSubscribers] = await Promise.all([
+      Payment.countDocuments(query),
+      Payment.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('user', 'name email avatar subscription'),
+      Payment.find({ status: 'succeeded' }).select('amount plan billingCycle createdAt'),
+      User.countDocuments({
+        'subscription.status': 'active',
+        'subscription.plan': { $in: ['pro', 'pro_monthly', 'pro_yearly', 'lifetime'] }
+      })
+    ]);
+
+    // Calculate Financial KPIs
+    const totalGrossRevenueCents = allSucceededPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const monthlyPayments = allSucceededPayments.filter(p => p.billingCycle === 'monthly' || p.plan === 'pro_monthly');
+    const yearlyPayments = allSucceededPayments.filter(p => p.billingCycle === 'yearly' || p.plan === 'pro_yearly' || p.plan === 'yearly_pass');
+
+    const monthlyRevenueCents = monthlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const yearlyRevenueCents = yearlyPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+    const totalPages = Math.ceil(totalCount / limit) || 1;
+
+    res.json({
+      success: true,
+      pagination: {
+        totalCount,
+        totalPages,
+        currentPage: page,
+        limit,
+        hasNextPage: page < totalPages,
+        hasPrevPage: page > 1
+      },
+      kpiSummary: {
+        totalGrossRevenue: (totalGrossRevenueCents / 100).toFixed(2),
+        monthlyMrr: (monthlyPayments.length * 19).toFixed(2),
+        yearlyPassRevenue: (yearlyRevenueCents / 100).toFixed(2),
+        totalTransactionsCount: allSucceededPayments.length,
+        activePaidSubscribersCount: totalSubscribers,
+        monthlyTransactionsCount: monthlyPayments.length,
+        yearlyTransactionsCount: yearlyPayments.length
+      },
+      payments
+    });
+  } catch (error) {
+    console.error('Get admin payments error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error fetching payments list'
+    });
+  }
+};
+
 module.exports = {
   getAdminOverviewStats,
   getAllUsers,
@@ -1210,5 +1300,6 @@ module.exports = {
   updateFeatureFlags,
   sendBroadcastAnnouncement,
   getBroadcastHistory,
-  getAdminAuditLogs
+  getAdminAuditLogs,
+  getAdminPayments
 };
