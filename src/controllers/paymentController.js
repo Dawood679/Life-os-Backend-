@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Payment = require('../models/Payment');
 
 const getStripeInstance = () => {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -131,6 +132,24 @@ const createCheckoutSession = async (req, res) => {
     };
     await user.save({ validateBeforeSave: false });
 
+    // Record Payment Transaction Log
+    try {
+      await Payment.create({
+        user: user._id,
+        userEmail: user.email,
+        userName: user.name || 'User',
+        amount: selectedPlan.amount,
+        currency: 'usd',
+        plan: isYearly ? 'pro_yearly' : 'pro_monthly',
+        billingCycle: isYearly ? 'yearly' : 'monthly',
+        status: 'succeeded',
+        paymentGateway: 'simulation',
+        stripeSessionId: `sim_${Date.now()}`
+      });
+    } catch (payErr) {
+      console.warn('Failed to log simulated payment record:', payErr.message);
+    }
+
     return res.json({
       success: true,
       url: successUrl,
@@ -198,6 +217,27 @@ const handleStripeWebhook = async (req, res) => {
             currentPeriodEnd: new Date(Date.now() + (isYearly ? 365 : 30) * 24 * 60 * 60 * 1000)
           };
           await user.save({ validateBeforeSave: false });
+
+          // Record Payment in Transaction Log
+          try {
+            await Payment.create({
+              user: user._id,
+              userEmail: user.email,
+              userName: user.name || 'Customer',
+              amount: session.amount_total || (isYearly ? 18000 : 1900),
+              currency: session.currency || 'usd',
+              plan: isYearly ? 'pro_yearly' : 'pro_monthly',
+              billingCycle: isYearly ? 'yearly' : 'monthly',
+              status: 'succeeded',
+              paymentGateway: 'stripe',
+              stripeSessionId: session.id || '',
+              stripeCustomerId: String(session.customer || ''),
+              stripeSubscriptionId: String(session.subscription || '')
+            });
+          } catch (payErr) {
+            console.warn('Failed to record Stripe payment log:', payErr.message);
+          }
+
           console.log(`[Stripe] Successfully activated ${planType} (${isYearly ? 'yearly' : 'monthly'}) for user ${user.email}`);
         }
         break;

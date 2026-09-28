@@ -3,6 +3,7 @@ const Todo = require("../models/Todo");
 const lifeScoreService = require("../services/lifeScoreService");
 const { ai, roadmapConfig } = require("../config/gemini");
 const { callAIWithFallback } = require("../utils/aiWithFallback");
+const { incrementFeatureUsage } = require("../middleware/planLimiter");
 
 const buildPrompt = (goal) => `
   Generate a 90-Day (3-Month) Career Transformation Blueprint for: "${goal}".
@@ -84,6 +85,8 @@ const generateRoadmap = async (req, res) => {
       phases: sanitizedPhases,
       rawResponse: response.text,
     });
+
+    await incrementFeatureUsage(req.user._id, 'roadmap');
 
     res.status(201).json({
       success: true,

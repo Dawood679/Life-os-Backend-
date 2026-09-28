@@ -177,6 +177,19 @@ const userSchema = new mongoose.Schema(
       currentPeriodEnd: {
         type: Date
       }
+    },
+    usageQuota: {
+      mockInterviewsUsed: { type: Number, default: 0 },
+      studyPlansThisWeek: { type: Number, default: 0 },
+      roadmapsGenerated: { type: Number, default: 0 },
+      quotaResetDate: { 
+        type: Date, 
+        default: () => new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) 
+      },
+      weeklyResetDate: { 
+        type: Date, 
+        default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) 
+      }
     }
   },
   {

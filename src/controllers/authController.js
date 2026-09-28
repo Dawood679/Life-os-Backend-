@@ -233,7 +233,28 @@ const logout = (req, res) => {
 
 // get current user
 const getMe = async (req, res) => {
-  res.json({ success: true, user: req.user });
+  const user = req.user;
+  const now = new Date();
+  let modified = false;
+
+  if (user.usageQuota) {
+    if (user.usageQuota.quotaResetDate && now > new Date(user.usageQuota.quotaResetDate)) {
+      user.usageQuota.mockInterviewsUsed = 0;
+      user.usageQuota.roadmapsGenerated = 0;
+      user.usageQuota.quotaResetDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      modified = true;
+    }
+    if (user.usageQuota.weeklyResetDate && now > new Date(user.usageQuota.weeklyResetDate)) {
+      user.usageQuota.studyPlansThisWeek = 0;
+      user.usageQuota.weeklyResetDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      modified = true;
+    }
+    if (modified) {
+      await user.save();
+    }
+  }
+
+  res.json({ success: true, user });
 };
 
 // forgotPassword

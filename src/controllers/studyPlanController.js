@@ -2,6 +2,7 @@ const StudyPlan = require("../models/StudyPlan");
 const { ai, studyPlanConfig } = require("../config/gemini");
 const { callAIWithFallback } = require('../utils/aiWithFallback');
 const lifeScoreService = require('../services/lifeScoreService');
+const { incrementFeatureUsage } = require('../middleware/planLimiter');
 
 const generateStudyPlan = async (req, res) => {
   try {
@@ -22,26 +23,34 @@ const generateStudyPlan = async (req, res) => {
     }
 
     const prompt = `
-TASK: Generate a structured, outcome-driven, task-based study plan with point tiers and 2-3 question Micro-Quizzes for active recall verification.
-- SUBJECT/GOAL: ${subject}
-- TARGET LEVEL: ${currentLevel}${contextDetails}
+TASK: Generate a comprehensive, multi-task curriculum blueprint containing ALL essential tasks needed to master: "${subject}".
+- TARGET SUBJECT/GOAL: ${subject}
+- PROFICIENCY LEVEL: ${currentLevel}${contextDetails}
 
-REQUIREMENTS:
-1. "planTitle": Punchy, professional title without rigid numbers (e.g. "Mastering ${subject}", "${subject} Core Blueprint").
-2. "summary": Concise 2-3 sentence overview of targeted learning outcomes.
-3. "canonicalSkill": The recognized root skill category (e.g. "React.js", "Financial Modeling", "Organic Chemistry").
-4. "isSkillVerifiable": boolean (true for legitimate professional, academic, or technical skills; false for abstract personal musings).
-5. "tasks": Generate between 6 to 12 clear, progressive tasks (Task 1, Task 2...).
-   - Each task MUST have an estimatedMinutes (15-60) and tier:
-     * 'quick_concept': 10-15 points (15-20 min)
-     * 'core_mechanism': 20-30 points (30-45 min)
-     * 'hands_on_exercise': 40-50 points (45-60 min)
-   - "microQuiz": For EVERY task, provide EXACTLY 2 to 3 sharp multiple-choice active recall questions:
-     * "question": Specific question testing the task concept.
-     * "options": Array of exactly 4 strings ["A) ...", "B) ...", "C) ...", "D) ..."].
-     * "correctAnswer": "A", "B", "C", or "D".
-     * "explanation": 1-2 sentence explanation of why the answer is correct.
-6. "tips": Array of 3 high-impact learning & retention tips.
+CRITICAL RULES:
+1. "planTitle": Punchy, inspiring title (e.g. "Complete ${subject} Mastery Blueprint", "${subject} from Scratch to Production").
+2. "summary": 2-3 sentence overview covering everything the learner will build and master.
+3. "canonicalSkill": Root canonical skill (e.g. "${subject}").
+4. "isSkillVerifiable": true
+5. "tasks": You MUST generate between 8 to 12 progressive, step-by-step tasks (Task 1 through Task 10) covering:
+   - Fundamentals & Environment (Tasks 1-2)
+   - Core Mechanisms, Architecture & Essential Syntax (Tasks 3-5)
+   - Practical Patterns, State, APIs & Real-world Workflows (Tasks 6-8)
+   - Testing, Optimization & Capstone Project Implementation (Tasks 9-10+)
+   
+   For EVERY single task, include:
+   - "taskNumber": integer (1, 2, 3...)
+   - "title": Specific, actionable topic name
+   - "description": Clear explanation of what to learn, code, or execute
+   - "tier": 'quick_concept' (15 pts) | 'core_mechanism' (25 pts) | 'hands_on_exercise' (45 pts)
+   - "estimatedMinutes": number (15-60)
+   - "microQuiz": Exactly 2 to 3 sharp active-recall multiple-choice questions testing that specific task:
+     * "question": Conceptual or problem-solving question
+     * "options": 4 options ["A) ...", "B) ...", "C) ...", "D) ..."]
+     * "correctAnswer": "A", "B", "C", or "D"
+     * "explanation": Brief explanation
+
+6. "tips": Exactly 3 actionable master tips for retention and project building.
 `;
 
     const response = await callAIWithFallback(ai, studyPlanConfig, prompt);
@@ -53,19 +62,23 @@ REQUIREMENTS:
 
     const parsedPlan = JSON.parse(jsonMatch[0]);
 
-    // Ensure points are calculated
-    const tasks = (parsedPlan.tasks || []).map((t, idx) => {
-      let defaultPoints = 20;
+    // Ensure points and task properties are calculated with resilient fallbacks
+    const rawTasks = Array.isArray(parsedPlan.tasks) ? parsedPlan.tasks : [];
+    const tasks = rawTasks.map((t, idx) => {
+      let defaultPoints = 25;
       if (t.tier === 'quick_concept') defaultPoints = 15;
-      else if (t.tier === 'hands_on_exercise') defaultPoints = 40;
+      else if (t.tier === 'hands_on_exercise') defaultPoints = 45;
+
+      const taskTitle = t.title || t.name || t.topic || `Task ${idx + 1}: ${subject}`;
+      const taskDescription = t.description || t.details || t.summary || t.task || taskTitle || 'Understand and implement this core mechanism.';
 
       return {
-        taskNumber: t.taskNumber || idx + 1,
-        title: t.title || `Task ${idx + 1}`,
-        description: t.description || '',
-        tier: t.tier || 'core_mechanism',
-        estimatedMinutes: t.estimatedMinutes || 30,
-        points: t.points || defaultPoints,
+        taskNumber: Number(t.taskNumber) || idx + 1,
+        title: String(taskTitle),
+        description: String(taskDescription),
+        tier: t.tier || (idx % 3 === 0 ? 'quick_concept' : idx % 3 === 1 ? 'core_mechanism' : 'hands_on_exercise'),
+        estimatedMinutes: Number(t.estimatedMinutes) || 30,
+        points: Number(t.points) || defaultPoints,
         isCompleted: false,
         microQuiz: Array.isArray(t.microQuiz) ? t.microQuiz : []
       };
@@ -89,6 +102,8 @@ REQUIREMENTS:
       sourceRoadmap: sourceRoadmapId || null,
       rawResponse: response.text,
     });
+
+    await incrementFeatureUsage(req.user._id, 'study_plan');
 
     res.status(201).json({
       success: true,

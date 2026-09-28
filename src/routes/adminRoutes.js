@@ -13,13 +13,17 @@ const {
   updateFeatureFlags,
   sendBroadcastAnnouncement,
   getBroadcastHistory,
-  getAdminAuditLogs
+  getAdminAuditLogs,
+  getAdminPayments
 } = require('../controllers/adminController');
 const { protect } = require('../middleware/auth');
 const { authorize } = require('../middleware/roleCheck');
 
 // All admin routes require authentication and admin role
 router.use(protect, authorize('admin'));
+
+// Revenue & Payments Management
+router.get('/payments', getAdminPayments);
 
 // Platform, AI & Product Telemetry
 router.get('/stats', getAdminOverviewStats);

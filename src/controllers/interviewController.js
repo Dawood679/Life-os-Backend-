@@ -1,5 +1,6 @@
 const { InterviewSession } = require('../models/InterviewSession');
 const StudyPlan = require('../models/StudyPlan');
+const { incrementFeatureUsage } = require('../middleware/planLimiter');
 const {
   ai,
   generateContentWithRetry,
@@ -133,6 +134,7 @@ Generate an authentic, professional opening interview question (Technical, Conce
 
     accumulateUsage(newSession, response);
     await newSession.save();
+    await incrementFeatureUsage(req.user._id, 'mock_interview');
 
     res.status(201).json({
       success: true,
