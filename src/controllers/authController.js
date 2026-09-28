@@ -217,10 +217,17 @@ const verifyLoginOTP = async (req, res) => {
 
 // for logout
 const logout = (req, res) => {
-  res.cookie('token', '', {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cookieOptions = {
     httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? 'none' : 'lax',
+    path: '/',
     expires: new Date(0)
-  });
+  };
+
+  res.cookie('token', '', cookieOptions);
+  res.clearCookie('token', { path: '/' });
   res.json({ success: true, message: 'Logged out successfully' });
 };
 
@@ -357,6 +364,119 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// Google OAuth Login / Register (Zero third-party library)
+const googleLogin = async (req, res) => {
+  try {
+    const { credential, accessToken } = req.body;
+
+    if (!credential && !accessToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google authentication token is required'
+      });
+    }
+
+    let payload = null;
+
+    if (credential) {
+      // Verify Google ID Token via Google's official tokeninfo endpoint
+      const googleRes = await fetch(
+        `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`
+      );
+      if (!googleRes.ok) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid or expired Google credential'
+        });
+      }
+      payload = await googleRes.json();
+    } else if (accessToken) {
+      // Fallback: Verify Google Access Token via Google's userinfo endpoint
+      const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (!googleRes.ok) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid Google access token'
+        });
+      }
+      payload = await googleRes.json();
+    }
+
+    if (!payload || !payload.email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Unable to retrieve user details from Google'
+      });
+    }
+
+    // Verify email verification status from Google
+    const isGoogleEmailVerified =
+      payload.email_verified === true || payload.email_verified === 'true';
+
+    if (!isGoogleEmailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google email is not verified'
+      });
+    }
+
+    const email = payload.email.toLowerCase().trim();
+    const name =
+      payload.name ||
+      [payload.given_name, payload.family_name].filter(Boolean).join(' ') ||
+      email.split('@')[0];
+    const avatar = payload.picture || '';
+
+    // Check if user already exists
+    let user = await User.findOne({ email });
+
+    if (user) {
+      if (user.isSuspended) {
+        return res.status(403).json({
+          success: false,
+          message: `Your account has been suspended. Reason: ${user.suspendedReason || 'Terms violation'}`
+        });
+      }
+
+      // Auto-verify email if not verified yet
+      let shouldSave = false;
+      if (!user.isEmailVerified) {
+        user.isEmailVerified = true;
+        shouldSave = true;
+      }
+      if (!user.avatar && avatar) {
+        user.avatar = avatar;
+        shouldSave = true;
+      }
+      if (shouldSave) {
+        await user.save({ validateBeforeSave: false });
+      }
+
+      return sendTokenResponse(user, 200, res);
+    }
+
+    // Create new user account via Google OAuth
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    user = await User.create({
+      name,
+      email,
+      password: randomPassword,
+      avatar,
+      isEmailVerified: true
+    });
+
+    return sendTokenResponse(user, 201, res);
+  } catch (error) {
+    console.error('Google login error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error during Google authentication'
+    });
+  }
+};
+
 module.exports = { 
   register, 
   verifyEmail, 
@@ -366,5 +486,6 @@ module.exports = {
   getMe, 
   forgotPassword,
   verifyForgotOTP, 
-  resetPassword 
-};
+  resetPassword,
+  googleLogin
+};
