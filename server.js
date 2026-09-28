@@ -9,16 +9,42 @@ const initWaterReminderCron = require("./src/utils/waterReminderCron");
 const { startHealthSchedulers } = require("./src/utils/healthScheduler");
 
 dotenv.config();
-connectDB();
 
 const app = express();
-startReminderJob();
-initWaterReminderCron();
-startHealthSchedulers();
+
+// Only run persistent background cron workers in dedicated Node process (not serverless)
+if (!process.env.VERCEL) {
+  connectDB();
+  startReminderJob();
+  initWaterReminderCron();
+  startHealthSchedulers();
+}
+
+// Auto-connect DB middleware for serverless invocations
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+  } catch (err) {
+    console.error("DB connection error:", err.message);
+  }
+  next();
+});
+
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:5173',
+  'http://localhost:3000'
+].filter(Boolean);
 
 app.use(
   cors({
-    origin: process.env.CLIENT_URL,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+        callback(null, true);
+      } else {
+        callback(null, true);
+      }
+    },
     credentials: true,
   }),
 );

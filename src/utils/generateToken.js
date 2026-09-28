@@ -26,15 +26,14 @@ const generateToken = (userId) => {
   return jwt.sign(
     { id: userId },
     process.env.JWT_SECRET,
-    { expiresIn: process.env.JWT_EXPIRE }
+    { expiresIn: process.env.JWT_EXPIRE || '7d' }
   );
 };
-
 
 const sendTokenResponse = (user, statusCode, res) => {
   const token = generateToken(user._id);
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
   const cookieOptions = {
     httpOnly: true,
     secure: isProduction,
@@ -48,6 +47,7 @@ const sendTokenResponse = (user, statusCode, res) => {
     .json({
       success: true,
       message: 'Authentication successful',
+      token,
       user: {
         id: user._id,
         name: user.name,
