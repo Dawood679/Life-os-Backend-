@@ -53,6 +53,7 @@ app.use('/api/rescheduler', require('./src/routes/reschedulerRoutes'));
 app.use('/api/notifications', require('./src/routes/notificationRoutes'));
 app.use('/api/copilot', require('./src/routes/copilotRoutes'));
 app.use('/api/weekly-report', require('./src/routes/weeklyReportRoutes'));
+app.use('/api/finance', require('./src/routes/financeRoutes'));
 
 
 app.get("/", (req, res) => {
