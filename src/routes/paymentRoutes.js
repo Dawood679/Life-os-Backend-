@@ -5,6 +5,7 @@ const User = require('../models/User');
 const {
   createCheckoutSession,
   handleStripeWebhook,
+  verifyCheckoutSession,
   getSubscriptionStatus
 } = require('../controllers/paymentController');
 const { protect } = require('../middleware/auth');
@@ -24,6 +25,7 @@ const optionalAuth = async (req, res, next) => {
 };
 
 router.post('/create-checkout-session', optionalAuth, createCheckoutSession);
+router.get('/verify-session', optionalAuth, verifyCheckoutSession);
 router.post('/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 router.get('/status', protect, getSubscriptionStatus);
 
