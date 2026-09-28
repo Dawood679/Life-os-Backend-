@@ -37,8 +37,26 @@ const notificationSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ['water_reminder', 'medicine_reminder', 'daily_briefing', 'todo_reminder', 'system'],
+      enum: [
+        'water_reminder',
+        'medicine_reminder',
+        'daily_briefing',
+        'todo_reminder',
+        'system',
+        'announcement',
+        'system_update',
+        'alert'
+      ],
       default: 'system'
+    },
+    link: {
+      type: String,
+      default: ''
+    },
+    priority: {
+      type: String,
+      enum: ['low', 'normal', 'high', 'urgent'],
+      default: 'normal'
     },
     read: {
       type: Boolean,
